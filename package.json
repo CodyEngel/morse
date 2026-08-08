@@ -1,0 +1,40 @@
+{
+  "name": "morse",
+  "version": "0.1.0",
+  "description": "A simplistic agent-to-agent communication platform for solo builders.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "morse": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "npm run build && node --test --no-warnings --test-timeout 90000 test/*.test.js",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  },
+  "keywords": [
+    "mcp",
+    "agents",
+    "multi-agent",
+    "claude-code",
+    "codex",
+    "opencode"
+  ]
+}
