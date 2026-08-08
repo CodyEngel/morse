@@ -42,12 +42,14 @@ interface Args {
 export async function main(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
 
-  if (args.flags.help || args.command === "help" || !args.command) {
-    console.log(HELP);
-    return;
-  }
+  // Version first: `morse --version` has no command, and the help branch below
+  // would otherwise swallow it.
   if (args.flags.version || args.command === "version") {
     console.log(VERSION);
+    return;
+  }
+  if (args.flags.help || args.command === "help" || !args.command) {
+    console.log(HELP);
     return;
   }
 
