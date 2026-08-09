@@ -40,7 +40,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\"",
     "dev": "tsc --watch",
     "test": "npm run build && node --test --no-warnings --test-timeout 90000 test/*.test.js",
     "prepare": "npm run build"

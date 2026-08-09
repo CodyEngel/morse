@@ -8,7 +8,34 @@ on:
     tags: ["v*"]
 
 jobs:
+  # The gate runs before the publish job and on more than one Node, because the
+  # engines floor is a promise to users and nothing else proves it on the exact
+  # commit being published. `npm ci` runs `prepare`, so this also proves the
+  # build works on both.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.13.0 is the `engines` floor (package.json), set deliberately in
+        # 0cb7485 to where node:sqlite is usable without a flag. It is here
+        # because CI's per-PR matrix does not gate a release: without this leg
+        # a floor-only regression publishes green and breaks exactly the users
+        # least equipped to diagnose it. Do not drop it to simplify the matrix.
+        node: ["22.13.0", "24.x"]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,8 +48,6 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npm test
 
       # A tag that disagrees with package.json would publish a version nobody
       # can trace back to a commit.

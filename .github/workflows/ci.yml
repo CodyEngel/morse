@@ -33,6 +33,36 @@ jobs:
         with:
           node-version: 24.x
       - run: npm ci
+
+      # `npm test` globs test/*.test.js — one level, no recursion. A suite in
+      # any subdirectory is therefore invisible to it, and invisible is not the
+      # same as failing: the build stays green while the assertions never run.
+      # This step names the omission instead of inheriting its silence.
+      #
+      # It is deliberately about where a file sits, not what it is called: a
+      # staging directory, a rebase that drops the final `git mv`, a suite
+      # tucked under a topic folder for tidiness all land the same way.
+      - name: Fail if any test is outside the suite npm test runs
+        run: |
+          # helpers/ and fixtures/ are support files, not suites — they are
+          # imported by the tests above them and are meant not to be globbed.
+          stranded=$(find test -mindepth 2 -name '*.test.js' \
+            -not -path 'test/helpers/*' -not -path 'test/fixtures/*')
+          if [ -n "$stranded" ]; then
+            echo "These suites do not match test/*.test.js, so npm test never"
+            echo "runs them and CI cannot go red on what they assert:"
+            echo
+            echo "$stranded" | sed 's/^/  /'
+            echo
+            echo "This red means one of two things — the file list tells you which:"
+            echo "  * a move is unfinished: bring them (and their fixtures) up"
+            echo "    into test/, or delete them."
+            echo "  * they assert a requirement nobody has implemented yet:"
+            echo "    implement it, or drop the requirement. Promoting them"
+            echo "    as-is would red the build for a missing feature."
+            exit 1
+          fi
+
       # Guards the promise that installing morse does not install six opinions
       # about what a product owner is.
       - name: Verify no roles ship in the package
