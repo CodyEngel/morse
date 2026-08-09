@@ -11,9 +11,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        # 22.5 is the floor because node:sqlite does not exist before it; the
-        # others are the maintained lines it has to keep working on.
-        node: ["22.5.0", "22.x", "24.x"]
+        # 22.13.0 is the exact floor: node:sqlite exists from 22.5.0 but only
+        # behind --experimental-sqlite, so pinning the true minimum is the only
+        # way this matrix can catch an engines field that lies.
+        node: ["22.13.0", "22.x", "24.x"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

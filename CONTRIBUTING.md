@@ -12,7 +12,7 @@ npm test        # builds, then runs the full suite
 npm run dev     # tsc --watch
 ```
 
-Node 22.5 or newer. That floor is not arbitrary — morse uses the built-in `node:sqlite`, which does not exist before it.
+Node 22.13 or newer. That floor is not arbitrary — morse uses the built-in `node:sqlite`, which exists from 22.5 but stays behind `--experimental-sqlite` until 22.13.
 
 ## Architecture
 
