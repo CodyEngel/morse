@@ -1,0 +1,39 @@
+name: Release
+
+# Publishing from CI rather than a laptop is what makes provenance possible:
+# npm derives the attestation from the runner's OIDC identity, so there is no
+# provider to attest to when the same command runs locally.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+
+      # A tag that disagrees with package.json would publish a version nobody
+      # can trace back to a commit.
+      - name: Check the tag matches package.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG"; exit 1
+          fi
+
+      - run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

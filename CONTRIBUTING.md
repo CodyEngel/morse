@@ -67,8 +67,17 @@ Maintainer only:
 ```bash
 npm test
 npm version <patch|minor|major>   # tags the commit
-git push --follow-tags
-npm publish   # publishConfig sets access and provenance
+git push --follow-tags            # the tag triggers .github/workflows/release.yml
+```
+
+The release workflow publishes with provenance and refuses to run if the tag
+disagrees with `package.json`. It needs an `NPM_TOKEN` repository secret.
+
+Publishing by hand works too, just without provenance — npm can only attest to
+a build it can identify, and a laptop has no OIDC provider:
+
+```bash
+npm publish
 ```
 
 `prepare` builds before publish. `npm pack --dry-run` should show only `dist/`, `README.md`, `LICENSE`, and `package.json`.

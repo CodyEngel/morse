@@ -20,8 +20,7 @@
   },
   "author": "Cody Engel",
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "license": "Apache-2.0",
   "type": "module",
