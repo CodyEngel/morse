@@ -1,5 +1,5 @@
 {
-  "name": "morse",
+  "name": "morse-ai",
   "version": "0.1.0",
   "description": "A simplistic agent-to-agent communication platform for solo builders.",
   "keywords": [
@@ -19,6 +19,10 @@
     "url": "https://github.com/CodyEngel/morse/issues"
   },
   "author": "Cody Engel",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "license": "Apache-2.0",
   "type": "module",
   "bin": {

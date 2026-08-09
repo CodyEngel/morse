@@ -19,8 +19,10 @@ Zero runtime dependencies. One SQLite file. `morse join` launches Claude Code or
 ## Quick start
 
 ```bash
-npm install -g morse
+npm install -g morse-ai
 ```
+
+The package is `morse-ai`; the command it installs is `morse`.
 
 Open a terminal per agent and join the room. Any name works — morse ships no roles, and an agent describes itself over the bus:
 

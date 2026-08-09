@@ -68,7 +68,9 @@ Maintainer only:
 npm test
 npm version <patch|minor|major>   # tags the commit
 git push --follow-tags
-npm publish --provenance
+npm publish   # publishConfig sets access and provenance
 ```
 
 `prepare` builds before publish. `npm pack --dry-run` should show only `dist/`, `README.md`, `LICENSE`, and `package.json`.
+
+The package is published as `morse-ai` because `morse` was already taken. The installed command is still `morse`, and nothing else — env vars, `~/.morse/`, room names — uses the package name.
