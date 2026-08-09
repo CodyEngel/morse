@@ -66,8 +66,22 @@ Maintainer only:
 
 ```bash
 npm test
-npm version <patch|minor|major>   # tags the commit
+npm version <patch|minor|major>   # bumps, commits and tags
 git push --follow-tags            # the tag triggers .github/workflows/release.yml
+```
+
+That is the whole process. `src/version.ts` reads from `package.json`, so there
+is nothing else to bump.
+
+If commits are signed through an agent that `npm version` cannot reach — 1Password's,
+for instance — its internal `git commit` fails. `git -c` does not help, because npm
+runs git as a subprocess; the config has to arrive through the environment:
+
+```bash
+export GIT_CONFIG_COUNT=3
+export GIT_CONFIG_KEY_0=gpg.ssh.program GIT_CONFIG_VALUE_0=/usr/bin/ssh-keygen
+export GIT_CONFIG_KEY_1=user.signingkey GIT_CONFIG_VALUE_1=~/.ssh/<signing-key>
+export GIT_CONFIG_KEY_2=commit.gpgsign  GIT_CONFIG_VALUE_2=true
 ```
 
 The release workflow publishes with provenance and refuses to run if the tag
