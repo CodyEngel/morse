@@ -266,3 +266,24 @@ test("rejoining clears a terminal status so it cannot fake convergence", () => {
   assert.equal(agent.online, true);
   assert.equal(agent.status, "idle");
 });
+
+test("a running session is distinguishable from a crashed one", () => {
+  // The state a live agent sits in between launch and its first turn:
+  // registered, heartbeat going stale, process very much alive. Judged on the
+  // heartbeat alone it is indistinguishable from a crash.
+  store.register({ room: ROOM, name: "quiet", pid: process.pid });
+  store.register({ room: ROOM, name: "ghost", pid: 2_147_483_600 });
+
+  const roster = store.roster(ROOM);
+  assert.equal(roster.find((a) => a.name === "quiet").alive, true, "our own pid is running");
+  assert.equal(roster.find((a) => a.name === "ghost").alive, false, "that pid cannot exist");
+});
+
+test("a departed agent is not alive even if its pid gets reused", () => {
+  store.register({ room: ROOM, name: "gone", pid: process.pid });
+  store.leave(ROOM, "gone", false);
+
+  const agent = store.roster(ROOM).find((a) => a.name === "gone");
+  assert.equal(agent.alive, false, "an explicit goodbye outranks a pid probe");
+  assert.equal(agent.online, false);
+});

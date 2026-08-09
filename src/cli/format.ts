@@ -47,7 +47,14 @@ export function statusBadge(agent: Agent): string {
   if (agent.status === "offline") return dim("offline");
 
   const paint = STATUS_COLORS[agent.status];
-  return agent.online ? paint(agent.status) : `${paint(agent.status)}${dim(" · offline")}`;
+  if (agent.online) return paint(agent.status);
+
+  // Running but not heartbeating: the session exists and its inbox is filling
+  // up, but nobody has given it a turn, so it is not listening. Calling that
+  // "offline" sends teammates looking for a crash that never happened.
+  if (agent.alive) return `${paint(agent.status)}${yellow(" · not listening")}`;
+
+  return `${paint(agent.status)}${dim(" · offline")}`;
 }
 
 export function clock(ms: number): string {

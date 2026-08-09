@@ -308,6 +308,7 @@ function renderAgent(agent: {
   status: string;
   statusNote: string | null;
   online: boolean;
+  alive: boolean;
   lastSeen: number;
   harness: string | null;
 }): Record<string, unknown> {
@@ -319,6 +320,9 @@ function renderAgent(agent: {
     status: agent.status,
     note: agent.statusNote,
     online: agent.online,
+    // Running but not listening. Mail sent now will be read whenever they next
+    // take a turn, so do not treat them as gone.
+    ...(agent.online ? {} : { presence: agent.alive ? "running, not listening" : "offline" }),
     last_seen_seconds_ago: Math.round((Date.now() - agent.lastSeen) / 1000),
     harness: agent.harness,
   };

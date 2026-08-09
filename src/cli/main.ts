@@ -32,6 +32,12 @@ Options:
 
 The store is machine-wide at ~/.morse/morse.db; rooms keep projects apart.`;
 
+const OPENING_TURN =
+  "Join the room: call morse_register, then morse_roster to see who is here and what they own, " +
+  "then morse_inbox. Handle anything waiting for you. When you have nothing left to do, call " +
+  "morse_wait and keep following the protocol in your system prompt — do not stop and hand back " +
+  "to me while teammates are still working.";
+
 interface Args {
   command: string;
   positional: string[];
@@ -133,6 +139,13 @@ async function join_(args: Args, room: string): Promise<void> {
     systemPrompt,
     ...args.passthrough,
   ];
+
+  // Without an opening turn the session registers and then sits at the prompt:
+  // present on the roster, accumulating mail, listening to none of it, and
+  // indistinguishable from a crash until a human happens to type something.
+  // Seeding the first turn is what puts the agent into its wait loop.
+  const headless = args.passthrough.some((arg) => arg === "-p" || arg === "--print");
+  if (!headless) harnessArgs.push(OPENING_TURN);
 
   console.log(
     `${dim("morse:")} joining ${agentColor(name)(bold(name))} to room ${cyan(room)} via ${harness}`,

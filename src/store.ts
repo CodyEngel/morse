@@ -37,7 +37,10 @@ export interface Agent {
   cursor: number;
   joinedAt: number;
   lastSeen: number;
+  /** Heartbeating: in the wait loop and listening right now. */
   online: boolean;
+  /** Process still exists, even if it has not touched the bus recently. */
+  alive: boolean;
 }
 
 export interface RegisterInput {
@@ -416,7 +419,28 @@ function toAgent(row: Row): Agent {
     joinedAt: Number(row.joined_at),
     lastSeen,
     online: present && status !== "offline" && now() - lastSeen < ONLINE_WINDOW_MS,
+    alive: present && isRunning(row.pid === null ? null : Number(row.pid)),
   };
+}
+
+/**
+ * Distinguishes a session that is up but not listening from one that is gone.
+ *
+ * A harness only acts on its turn, so an agent that has been launched but not
+ * yet prompted registers once and then goes quiet. Judged on heartbeat alone it
+ * looks identical to a crashed process — but its inbox is still filling up, and
+ * a teammate needs to know the difference between "nobody is there" and "they
+ * just have not looked yet". The store is machine-wide, so the pid is local.
+ */
+function isRunning(pid: number | null): boolean {
+  if (pid === null) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM means it exists but belongs to someone else, which still counts.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
 }
 
 function parseSkills(value: unknown): string[] {
