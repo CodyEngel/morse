@@ -1,7 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
+import {
+  type PluginManifest,
+  dirExists,
+  expandDepth,
+  loadPlugins,
+  pluginDirs,
+  pluginsEnabled,
+} from "./plugins.js";
 
 /**
  * Morse ships no roles. It defines the shape of one and where to find them.
@@ -32,6 +40,12 @@ export interface RoleDefinition {
   brief?: string;
   /** Where it was loaded from, so `morse roles` can show precedence. */
   source: string;
+  /**
+   * Which plugin supplied it, absent when it came from `.morse/roles`. A file
+   * written for another tool can end up as an agent's system prompt, so where
+   * it came from is never implicit.
+   */
+  plugin?: string;
 }
 
 /**
@@ -51,9 +65,98 @@ export function roleSearchPaths(cwd = process.cwd()): string[] {
   const packs = process.env.MORSE_ROLES?.split(":").map((p) => p.trim()).filter(Boolean) ?? [];
   paths.push(...packs.map((p) => resolve(p)));
 
-  paths.push(join(process.env.MORSE_HOME ?? join(homedir(), ".morse"), "roles"));
+  paths.push(morseHomeRoles());
 
   return [...new Set(paths)];
+}
+
+function morseHomeRoles(): string {
+  return join(process.env.MORSE_HOME ?? join(homedir(), ".morse"), "roles");
+}
+
+/** One directory to search, and how to read what is in it. */
+export interface SearchDir {
+  dir: string;
+  /** Absent for `.morse/roles`; the plugin id for a borrowed directory. */
+  plugin?: string;
+  /** Nested levels below `dir` to descend. */
+  depth: number;
+  extensions: string[];
+  /** Which frontmatter keys supply which fields; morse's own when absent. */
+  map?: FieldMap;
+}
+
+const MORSE_EXTENSIONS = [".md", ".markdown"];
+
+/**
+ * The search ladder, widened by plugins.
+ *
+ * Plugins widen each rung rather than adding a rung of their own: a borrowed
+ * definition found next to your project still loses to one found further away
+ * only if that further one is nearer on the ladder. Within a rung, `.morse/roles`
+ * is always first, so an explicit morse role shadows a borrowed one at the same
+ * distance — writing the file is the way to say "I mean this one".
+ *
+ * `$MORSE_ROLES` is deliberately not widened. It points at morse-shaped packs,
+ * and a pack that quietly started reading `.claude/agents` relative to itself
+ * would be surprising in a way the project and home rungs are not.
+ */
+export function roleSearchDirs(cwd = process.cwd()): SearchDir[] {
+  const morse = (dir: string): SearchDir => ({ dir, depth: 0, extensions: MORSE_EXTENSIONS });
+  const root = gitRoot(cwd);
+  const projectRoots = root && root !== cwd ? [cwd, root] : [cwd];
+
+  if (!pluginsEnabled()) return roleSearchPaths(cwd).map(morse);
+
+  const plugins = loadPlugins({
+    project: projectRoots,
+    morseHome: process.env.MORSE_HOME ?? join(homedir(), ".morse"),
+  });
+
+  const dirs: SearchDir[] = [];
+  for (const projectRoot of projectRoots) {
+    dirs.push(morse(join(projectRoot, ".morse", "roles")));
+    dirs.push(...borrowed(plugins, projectRoot, "project"));
+  }
+
+  const packs = process.env.MORSE_ROLES?.split(":").map((p) => p.trim()).filter(Boolean) ?? [];
+  dirs.push(...packs.map((p) => morse(resolve(p))));
+
+  dirs.push(morse(morseHomeRoles()));
+  dirs.push(...borrowed(plugins, homedir(), "personal"));
+
+  const seen = new Set<string>();
+  return dirs.filter((entry) => {
+    const key = `${entry.plugin ?? ""}\0${entry.dir}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function borrowed(plugins: PluginManifest[], root: string, scope: "project" | "personal"): SearchDir[] {
+  return pluginDirs(plugins, root, scope).map((entry) => ({
+    dir: entry.dir,
+    plugin: entry.plugin,
+    depth: entry.depth,
+    extensions: entry.extensions,
+    map: entry.map,
+  }));
+}
+
+/**
+ * Every directory discovery actually looks at, in order, with whether it is
+ * there. `morse roles` prints this: a role that did not turn up is almost
+ * always a directory morse never looked in, and guessing at that is miserable.
+ */
+export function roleSearchReport(cwd = process.cwd()): { dir: string; plugin?: string; exists: boolean }[] {
+  const report: { dir: string; plugin?: string; exists: boolean }[] = [];
+  for (const entry of roleSearchDirs(cwd)) {
+    for (const dir of expandDepth(entry.dir, entry.depth)) {
+      report.push({ dir, plugin: entry.plugin, exists: dirExists(dir) });
+    }
+  }
+  return report;
 }
 
 /**
@@ -70,13 +173,18 @@ export function loadRole(name: string, cwd = process.cwd()): RoleDefinition | un
   const wanted = name.trim().toLowerCase();
   if (!isValidRoleName(wanted)) return undefined;
 
-  for (const dir of roleSearchPaths(cwd)) {
-    for (const extension of [".md", ".markdown"]) {
-      const path = join(dir, `${wanted}${extension}`);
-      // Belt and braces: even with a validated name, never read outside the
-      // directory we meant to search.
-      if (!isInside(dir, path)) continue;
-      if (existsSync(path)) return parseRole(readFileSync(path, "utf8"), path);
+  for (const entry of roleSearchDirs(cwd)) {
+    for (const dir of expandDepth(entry.dir, entry.depth)) {
+      for (const extension of entry.extensions) {
+        const path = join(dir, `${wanted}${extension}`);
+        // Belt and braces: even with a validated name, never read outside the
+        // directory we meant to search.
+        if (!isInside(dir, path)) continue;
+        if (!contained(dir, path)) continue;
+        const text = read(path);
+        if (text === undefined) continue;
+        return parseRole(text, path, { map: entry.map, plugin: entry.plugin });
+      }
     }
   }
   return undefined;
@@ -88,35 +196,99 @@ export function isInside(dir: string, path: string): boolean {
   return target === base || target.startsWith(base + sep);
 }
 
+/**
+ * `isInside` resolves lexically, which catches `..` and catches nothing else. A
+ * role file is not just read, its body becomes an agent's system prompt — so a
+ * symlink committed to a repository (git stores and restores mode 120000) would
+ * turn `git clone && morse join backend` into reading whatever it points at,
+ * private keys included. Resolve both ends before deciding.
+ *
+ * The check is containment, not a ban on symlinks: a roles directory that is
+ * itself a link, or one alias pointing at a sibling definition, is ordinary and
+ * keeps working. Only leaving the directory is refused. A link that resolves
+ * nowhere is simply absent — the same as any other missing file.
+ */
+function contained(dir: string, path: string): boolean {
+  try {
+    return isInside(realpathSync(dir), realpathSync(path));
+  } catch {
+    return false;
+  }
+}
+
+/** A file that cannot be read is skipped: one bad entry is not fatal. */
+function read(path: string): string | undefined {
+  try {
+    if (!statSync(path).isFile()) return undefined;
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 export function listRoles(cwd = process.cwd()): RoleDefinition[] {
   const seen = new Map<string, RoleDefinition>();
-  for (const dir of roleSearchPaths(cwd)) {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      continue; // Missing search directories are normal, not an error.
-    }
-    for (const entry of entries.sort()) {
-      if (!/\.(md|markdown)$/i.test(entry)) continue;
-      const definition = parseRole(readFileSync(join(dir, entry), "utf8"), join(dir, entry));
-      if (!seen.has(definition.name)) seen.set(definition.name, definition);
+  for (const entry of roleSearchDirs(cwd)) {
+    const pattern = new RegExp(`(${entry.extensions.map(escapeExtension).join("|")})$`, "i");
+    for (const dir of expandDepth(entry.dir, entry.depth)) {
+      let entries: string[];
+      try {
+        entries = readdirSync(dir);
+      } catch {
+        continue; // Missing search directories are normal, not an error.
+      }
+      for (const file of entries.sort()) {
+        if (!pattern.test(file)) continue;
+        const path = join(dir, file);
+        // Anything unreadable, escaped, or not a file at all is skipped. A
+        // plugin points morse at directories it does not control, so a single
+        // odd entry in someone's `.claude/agents` must not break `morse roles`.
+        if (!contained(dir, path)) continue;
+        const text = read(path);
+        if (text === undefined) continue;
+        const definition = parseRole(text, path, { map: entry.map, plugin: entry.plugin });
+        if (!seen.has(definition.name)) seen.set(definition.name, definition);
+      }
     }
   }
   return [...seen.values()];
 }
 
-export function parseRole(text: string, source: string): RoleDefinition {
+function escapeExtension(extension: string): string {
+  return extension.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Which frontmatter key supplies each field. Absent keys stay absent. */
+export type FieldMap = Partial<Record<"name" | "role" | "description" | "skills", string>>;
+
+const MORSE_FIELDS: FieldMap = { name: "name", role: "role", description: "description", skills: "skills" };
+
+export interface ParseOptions {
+  /**
+   * Another ecosystem's key names. Passed whole rather than merged over morse's
+   * own, so a plugin that says nothing about `skills` gets none — see the note
+   * on `PluginManifest.map` for why inventing them is worse than leaving them
+   * empty.
+   */
+  map?: FieldMap;
+  plugin?: string;
+}
+
+export function parseRole(text: string, source: string, options: ParseOptions = {}): RoleDefinition {
+  const map = options.map ?? MORSE_FIELDS;
   const { fields, body } = splitFrontmatter(text);
-  const fallbackName = basename(source).replace(/\.(md|markdown)$/i, "");
+  const fallbackName = basename(source).replace(/\.[^.]+$/, "");
   const brief = body.trim();
+  const field = (key: keyof FieldMap) => (map[key] === undefined ? undefined : fields[map[key]]);
+  const name = field("name") ?? fallbackName;
   return {
-    name: (fields.name ?? fallbackName).toString().toLowerCase(),
-    role: asString(fields.role),
-    description: asString(fields.description),
-    skills: asList(fields.skills),
+    name: name.toString().toLowerCase(),
+    role: asString(field("role")),
+    description: asString(field("description")),
+    skills: asList(field("skills")),
     brief: brief || undefined,
     source,
+    ...(options.plugin ? { plugin: options.plugin } : {}),
   };
 }
 

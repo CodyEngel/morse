@@ -5,7 +5,15 @@ import { join } from "node:path";
 import { runMcpServer } from "../mcp/server.js";
 import { buildPrompt } from "../prompt.js";
 import { resolveRoom, sanitizeRoom } from "../room.js";
-import { isValidRoleName, listRoles, loadRole, roleSearchPaths, roleTemplate } from "../roles.js";
+import { pluginsEnabled } from "../plugins.js";
+import {
+  isValidRoleName,
+  listRoles,
+  loadRole,
+  roleSearchPaths,
+  roleSearchReport,
+  roleTemplate,
+} from "../roles.js";
 import { BROADCAST, Store, normalizeRecipients } from "../store.js";
 import { VERSION } from "../version.js";
 import { waitForReply } from "../wait.js";
@@ -28,10 +36,13 @@ const HELP = `morse ${VERSION} — agent-to-agent communication for solo builder
 
 Options:
   --room <name>   Override the room (default: this git repo's name)
+  --no-plugins    Only read .morse/roles, not other tools' agent folders
   --help          Show this message
 
 The store is machine-wide at ~/.morse/morse.db; rooms keep projects apart.
-Morse ships no roles; \`morse roles\` shows where it looks for them.`;
+Morse ships no roles. It reads its own, and borrows agent definitions other
+tools already keep — \`morse roles\` shows every directory it looks in and which
+plugin supplied each definition.`;
 
 const OPENING_TURN =
   "Join the room: call morse_register, then morse_roster to see who is here and what they own, " +
@@ -59,6 +70,11 @@ export async function main(argv: string[]): Promise<void> {
     console.log(HELP);
     return;
   }
+
+  // Set before any command reads a role. An env var rather than a parameter
+  // threaded through every call site, so a joined session's MCP server inherits
+  // the same answer the CLI gave — one machine, one view of what is discoverable.
+  if (args.flags["no-plugins"]) process.env.MORSE_PLUGINS = "off";
 
   const room = args.flags.room ? sanitizeRoom(String(args.flags.room)) : resolveRoom();
 
@@ -131,6 +147,7 @@ async function join_(args: Args, room: string): Promise<void> {
     ...(role?.skills.length ? { MORSE_SKILLS: role.skills.join(",") } : {}),
     ...(process.env.MORSE_DB ? { MORSE_DB: process.env.MORSE_DB } : {}),
     ...(process.env.MORSE_HOME ? { MORSE_HOME: process.env.MORSE_HOME } : {}),
+    ...(process.env.MORSE_PLUGINS ? { MORSE_PLUGINS: process.env.MORSE_PLUGINS } : {}),
   };
 
   const systemPrompt = buildPrompt({ name, room, role });
@@ -154,8 +171,13 @@ async function join_(args: Args, room: string): Promise<void> {
     `${dim("morse:")} joining ${agentColor(name)(bold(name))} to room ${cyan(room)} via ${harness}`,
   );
   // The body of a role file is appended to the agent's system prompt, so a role
-  // picked up from a cloned repository is executable instruction. Name the file.
-  if (role) console.log(`${dim("morse:")} role from ${dim(role.source)}`);
+  // picked up from a cloned repository is executable instruction. Name the file,
+  // and name the tool it was written for — a definition morse borrowed from
+  // another ecosystem is the case most likely to surprise someone.
+  if (role) {
+    const origin = role.plugin ? `${yellow(role.plugin)} ${dim(role.source)}` : dim(role.source);
+    console.log(`${dim("morse:")} role from ${origin}`);
+  }
 
   const child = spawn(harness, harnessArgs, {
     stdio: "inherit",
@@ -316,7 +338,8 @@ function rooms(): void {
 /**
  * Morse ships no roles, so this reports what the machine actually has and where
  * it looked — which is the only way to explain precedence when a project role
- * shadows a shared one.
+ * shadows a shared one, or when a definition someone wrote for another tool
+ * turns up here.
  */
 function roles(args: Args): void {
   if (args.positional[0] === "new") return newRole(args.positional[1]);
@@ -332,12 +355,28 @@ function roles(args: Args): void {
       console.log(`${bold(safe(entry.name).padEnd(16))} ${safe(entry.role ?? "")}`);
       if (entry.description) console.log(`  ${wrapText(safe(entry.description), 76, "  ")}`);
       if (entry.skills.length) console.log(`  ${dim(safe(entry.skills.join(" · ")))}`);
-      console.log(`  ${dim(entry.source)}\n`);
+      // Borrowed definitions are labelled; morse's own are not, because the
+      // absence of a label is what "I wrote this for morse" looks like.
+      const origin = entry.plugin ? `${yellow(safe(entry.plugin))} ${dim(entry.source)}` : dim(entry.source);
+      console.log(`  ${origin}\n`);
     }
   }
 
   console.log(dim("Looked up in order:"));
-  for (const path of roleSearchPaths()) console.log(dim(`  ${path}`));
+  if (!pluginsEnabled()) {
+    // Off means off, down to the bytes: with discovery disabled this is the
+    // same short, self-chosen list it has always been, and annotating it would
+    // make "the same as before" a claim you had to take on trust.
+    for (const path of roleSearchPaths()) console.log(dim(`  ${path}`));
+    return;
+  }
+  // Plugins turn a list you wrote into a list morse assembled, so it has to say
+  // which directories were not there. A role that did not appear is nearly
+  // always a folder morse never looked in, and that is invisible otherwise.
+  for (const entry of roleSearchReport()) {
+    const label = entry.plugin ? ` ${yellow(safe(entry.plugin))}` : "";
+    console.log(`${dim(`  ${entry.dir}`)}${label}${entry.exists ? "" : dim(" (absent)")}`);
+  }
 }
 
 function newRole(name: string | undefined): void {

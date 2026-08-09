@@ -7,9 +7,23 @@ export {
   listRoles,
   parseRole,
   roleSearchPaths,
+  roleSearchDirs,
+  roleSearchReport,
   roleTemplate,
+  type FieldMap,
+  type ParseOptions,
   type RoleDefinition,
+  type SearchDir,
 } from "./roles.js";
+export {
+  BUILTIN_PLUGINS,
+  loadPlugins,
+  pluginDirs,
+  pluginsEnabled,
+  expandDepth,
+  type PluginDir,
+  type PluginManifest,
+} from "./plugins.js";
 export { buildPrompt, type PromptOptions } from "./prompt.js";
 export {
   Store,

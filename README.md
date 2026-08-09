@@ -117,7 +117,7 @@ morse send <to> <message>               Send as the human operator
 morse ask <to> <question>               Send and wait for an answer
 morse status                            One-line summary of the room
 morse rooms                             All rooms on this machine
-morse roles [new <name>]                Roles found, and where morse looked
+morse roles [new <name>]                Roles found, which plugin supplied each, and where morse looked
 morse prompt <agent>                    Print the protocol prompt for an agent
 morse init                              Write .mcp.json for a plain `claude`
 morse reset [--force]                   Clear the room (asks first)
@@ -166,6 +166,33 @@ $MORSE_ROLES            # shared packs (colon-separated)
 
 A "batteries-included" role pack is therefore just a directory of markdown — point `$MORSE_ROLES` at it, no plugin API involved. `examples/roles/` in this repo holds a six-role set (product owner, frontend, backend, devops, secops, qe) used by the tests; it is not part of the published package.
 
+### Agent folders other tools already keep
+
+You have probably written these definitions once already. Morse reads the agent folders your other tooling keeps, so a populated `.claude/agents/` needs no copying:
+
+```
+.claude/agents/backend.md        →  morse join backend
+```
+
+Each rung of the ladder above is widened with those folders, and `.morse/roles` still wins at the same rung — writing the morse file is how you say "I mean this one". `$MORSE_ROLES` is not widened; packs stay morse-shaped.
+
+| Plugin | Project | Personal | Layout |
+| --- | --- | --- | --- |
+| `claude` | `.claude/agents` | `~/.claude/agents` | `<name>.md` |
+| `pi` | `.pi/agent/agents`, `.pi/agents` | same, under `~` | `<pack>/<name>.md` |
+
+Only `name` and `description` are borrowed. A `tools:` list is a tool allowlist, not a capability blurb, so it is **not** mapped onto morse `skills` — agents pick teammates by reading skills, and a borrowed role arriving with none is honest. There is no `codex` plugin in this release.
+
+Teaching morse a fourth ecosystem is a JSON file, not a patch. Drop it in `.morse/plugins/` (or `~/.morse/plugins/`):
+
+```json
+{ "id": "acme", "project": [".acme/agents"], "depth": 0, "map": { "description": "summary" } }
+```
+
+A plugin is a manifest, never code — morse reads config files, it does not run them. Reusing an `id` replaces that plugin, which is how you correct a built-in without waiting for a release.
+
+`morse roles` labels every borrowed definition with the plugin that supplied it and lists every directory searched, including the ones that were absent. To turn discovery off and get pre-plugin behaviour exactly, pass `--no-plugins` or set `MORSE_PLUGINS=off`.
+
 ## Other harnesses
 
 The bus is portable — it is a standard MCP stdio server — but no two harnesses agree on how to be told about a server or how to have instructions injected. `morse join` handles that difference for you:
@@ -211,6 +238,7 @@ frontend     working    Frontend Engineer         claude-code
 | `MORSE_WAIT_SECONDS` | `50` | Default park duration for `morse_wait`. |
 | `MORSE_OPERATOR` | `operator` | Your name when you use `morse send` / `morse ask`. |
 | `MORSE_ROLES` | — | Colon-separated directories of role files to search. |
+| `MORSE_PLUGINS` | on | Set `0`/`off` to read only `.morse/roles`, never other tools' agent folders. |
 
 Claude Code's default MCP tool timeout is effectively unbounded, so a longer `MORSE_WAIT_SECONDS` is safe there. The 50-second default is chosen to stay inside stricter harnesses.
 
