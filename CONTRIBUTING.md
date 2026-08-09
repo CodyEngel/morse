@@ -71,7 +71,12 @@ git push --follow-tags            # the tag triggers .github/workflows/release.y
 ```
 
 The release workflow publishes with provenance and refuses to run if the tag
-disagrees with `package.json`. It needs an `NPM_TOKEN` repository secret.
+disagrees with `package.json`.
+
+It authenticates by OIDC, not a secret: npm is configured to trust this
+repository's `release.yml` as a publisher, so there is no token in the repo to
+leak or rotate. If that trust is ever removed, add an `NPM_TOKEN` secret and
+restore the `NODE_AUTH_TOKEN` env block noted in the workflow.
 
 Publishing by hand works too, just without provenance — npm can only attest to
 a build it can identify, and a laptop has no OIDC provider:

@@ -34,6 +34,11 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG"; exit 1
           fi
 
+      # No NODE_AUTH_TOKEN: npm trusts this workflow's OIDC identity, configured
+      # as a trusted publisher on the package. Provenance comes with it, so the
+      # flag is redundant here but harmless and explicit.
+      #
+      # Falling back to a token instead? Set an NPM_TOKEN secret and add:
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
