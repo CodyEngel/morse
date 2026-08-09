@@ -1,0 +1,9 @@
+backend          Backend Engineer
+  Owns APIs.
+  sql · api-design
+  {ROOT}/.morse/roles/backend.md
+
+Looked up in order:
+  {ROOT}/.morse/roles
+  /nonexistent
+  /nonexistent/roles

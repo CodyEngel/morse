@@ -217,3 +217,24 @@ test("without an assigned identity an agent may name itself", async () => {
   assert.equal(result.you, "chose-my-own");
   assert.equal(result.notice, undefined);
 });
+
+test("the suite is hermetic against the developer's own morse session", async () => {
+  // Morse is developed by people running morse, so MORSE_AGENT is set in the
+  // shell that runs `npm test`. If the harness inherited it, the test above
+  // would silently flip from "may name itself" to "was assigned a name" — and
+  // pass on CI, which has no morse session, while failing on every maintainer's
+  // machine. Nothing else pins this down, so pin it here.
+  const previous = process.env.MORSE_AGENT;
+  process.env.MORSE_AGENT = "ambient-leak";
+  try {
+    const a = new McpClient({ MORSE_DB: DB, MORSE_ROOM: "hermetic-room" });
+    clients.push(a);
+    await a.initialize();
+
+    const result = await a.call("morse_register", { name: "declared", role: "Analyst" });
+    assert.equal(result.you, "declared", "ambient MORSE_AGENT reached the server under test");
+  } finally {
+    if (previous === undefined) delete process.env.MORSE_AGENT;
+    else process.env.MORSE_AGENT = previous;
+  }
+});

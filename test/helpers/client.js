@@ -11,8 +11,17 @@ export class McpClient {
   #nextId = 1;
 
   constructor(env = {}) {
+    // Tests run on machines that are themselves running morse, so MORSE_AGENT
+    // and friends are already in the environment. Inheriting them would let the
+    // developer's own room decide what the server under test believes it is —
+    // the suite must see only what the test declares.
+    const base = { ...process.env };
+    for (const key of Object.keys(base)) {
+      if (key.startsWith("MORSE_")) delete base[key];
+    }
+
     this.#child = spawn(process.execPath, [CLI, "mcp"], {
-      env: { ...process.env, ...env },
+      env: { ...base, ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
 

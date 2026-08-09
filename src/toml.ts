@@ -30,8 +30,8 @@
  * header would also be correct TOML — root keys must precede tables, so nothing
  * after one can be a field we map. The subset is drawn tighter than correctness
  * requires: a file using constructs this reader does not model is a file it has
- * no business claiming to understand, and under P21 a refusal is reported to
- * the user rather than swallowed. An agent that does not load and says why
+ * no business claiming to understand, and a refusal is reported to the user
+ * rather than swallowed. An agent that does not load and says why
  * beats one that loads and might be wrong.
  */
 

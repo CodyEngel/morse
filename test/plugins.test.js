@@ -45,7 +45,7 @@ model: opus
 You own the API and data layer.
 `;
 
-// ------------------------------------------------------------ AC1: it works
+// -------------------------------------------------------------------- it works
 
 test("a Claude subagent is discovered without being copied into .morse/roles", () => {
   // The whole point: `roles.ts` has claimed compatibility with this file shape
@@ -79,7 +79,7 @@ test("a borrowed role lands with no skills rather than invented ones", () => {
   assert.equal(role.role, undefined, "claude has no role field; morse does not guess one");
 });
 
-// -------------------------------------------------- AC2 + P1: who wins where
+// -------------------------------------------------------------- who wins where
 
 test("a morse role shadows a borrowed one at the same rung", () => {
   const root = project("shadowing");
@@ -99,7 +99,7 @@ test("a morse role shadows a borrowed one at the same rung", () => {
   assert.equal(listed[0].plugin, undefined);
 });
 
-// ------------------------------------------------- P8: nested, pack-namespaced
+// ----------------------------------------------------- nested, pack-namespaced
 
 test("a pi agent nested under a pack is discovered", () => {
   // pi namespaces agents by pack — agents/<pack>/<name>.md — so flat-only
@@ -118,7 +118,7 @@ test("a pi agent nested under a pack is discovered", () => {
 });
 
 test("two packs defining the same agent resolve first-wins, and both are visible", () => {
-  // P9. The loser is not an error, but it must be diagnosable — which means the
+  // The loser is not an error, but it must be diagnosable — which means the
   // winner's source path has to say which pack it came from.
   const root = project("pi-collision");
   const agents = join(root, ".pi", "agent", "agents");
@@ -136,7 +136,7 @@ test("two packs defining the same agent resolve first-wins, and both are visible
   );
 });
 
-// ------------------------------------------------------- AC3 + P5: provenance
+// ------------------------------------------------------------------ provenance
 
 test("the search report names every directory, including the ones that are absent", () => {
   const root = project("report");
@@ -153,7 +153,7 @@ test("the search report names every directory, including the ones that are absen
   assert.equal(morseDir.plugin, undefined);
 });
 
-// ---------------------------------------------------------- AC4 + P6: opt-out
+// --------------------------------------------------------------------- opt-out
 
 test("discovery off restores exactly the pre-plugin ladder", () => {
   // Not "finds nothing extra" but "is the same ladder": the assertion has to be
@@ -209,7 +209,7 @@ test("--no-plugins does not swallow the argument after it", () => {
   assert.match(run("prompt", "backend", "--no-plugins"), /\*\*backend\*\*/, "and order does not matter");
 });
 
-// ------------------------------------------- AC5: a fourth ecosystem is a file
+// ------------------------------------------------ a fourth ecosystem is a file
 
 test("a new ecosystem is a manifest, with no change to discovery internals", () => {
   // The extensibility claim, tested rather than asserted. Nothing about `acme`
@@ -240,7 +240,7 @@ test("a manifest may correct a built-in rather than waiting for a release", () =
   assert.equal(loadRole("wrong", root), undefined, "and the built-in location is not");
 });
 
-// ---------------------------------------------------- AC6: bad input is normal
+// --------------------------------------------------------- bad input is normal
 
 test("a malformed manifest is skipped, not fatal", () => {
   const root = project("bad-manifest");
@@ -253,8 +253,8 @@ test("a malformed manifest is skipped, not fatal", () => {
 });
 
 test("a manifest cannot point outside the search root", () => {
-  // AC7 a level up: the directory a manifest contributes is joined onto a root,
-  // so it must obey the same rule a role name does.
+  // Containment a level up: the directory a manifest contributes is joined onto
+  // a root, so it must obey the same rule a role name does.
   const root = project("manifest-escape");
   write(
     join(root, ".morse", "plugins", "escape.json"),
@@ -297,7 +297,7 @@ test("a missing plugin folder is the normal case, not an error", () => {
   );
 });
 
-// ------------------------------------------------------------ AC7: containment
+// ----------------------------------------------------------------- containment
 
 test("a role name cannot climb out of a plugin directory", () => {
   const root = project("name-escape");
