@@ -22,3 +22,4 @@ export {
 } from "./store.js";
 export { waitForInbox, waitForReply, type AskResult, type WaitOptions } from "./wait.js";
 export { VERSION } from "./version.js";
+export { buildHarnessArgs } from "./cli/main.js";

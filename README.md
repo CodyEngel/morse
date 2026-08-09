@@ -162,7 +162,17 @@ A "batteries-included" role pack is therefore just a directory of markdown — p
 
 ## Other harnesses
 
-`morse join` targets Claude Code by default. Point it elsewhere with `--harness`, or wire the server up by hand — it is a standard MCP stdio server:
+The bus is portable — it is a standard MCP stdio server — but no two harnesses agree on how to be told about a server or how to have instructions injected. `morse join` handles that difference for you:
+
+```bash
+morse join backend                      # Claude Code (default)
+morse join backend --harness codex      # Codex
+morse join backend --harness <command>  # anything else, Claude Code's flags
+```
+
+**Codex**, verified end to end: Codex takes inline TOML config rather than a JSON blob, and has no system-prompt flag, so the protocol prompt rides in the opening turn instead. One caveat that is Codex's, not morse's — `codex exec` auto-denies MCP tool calls, so a non-interactive run needs an approval policy that permits them.
+
+To wire any harness up by hand, it is an ordinary stdio server:
 
 ```json
 {
@@ -176,7 +186,13 @@ A "batteries-included" role pack is therefore just a directory of markdown — p
 }
 ```
 
-`MORSE_AGENT` is the identity. Everything else is optional.
+`MORSE_AGENT` is the identity, and it is authoritative: an agent cannot rename itself out of it. Everything else is optional. Morse reads the harness's name from the MCP handshake, so mixed rooms show who is running what:
+
+```
+$ morse roster
+backend      done       Backend Engineer          codex
+frontend     working    Frontend Engineer         claude-code
+```
 
 ## Environment
 

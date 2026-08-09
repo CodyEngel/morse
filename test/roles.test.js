@@ -124,3 +124,29 @@ test("the shipped examples parse and describe distinct expertise", () => {
     else process.env.MORSE_ROLES = previous;
   }
 });
+
+test("each harness gets the launch flags it actually understands", async () => {
+  const { buildHarnessArgs } = await import("../dist/index.js");
+  const base = {
+    node: "/usr/bin/node",
+    cliPath: "/x/cli.js",
+    serverEnv: { MORSE_AGENT: "backend", MORSE_ROOM: "app" },
+    systemPrompt: "PROTOCOL",
+    passthrough: [],
+    opening: "GO",
+  };
+
+  const claude = buildHarnessArgs({ ...base, harness: "claude" });
+  assert.ok(claude.includes("--mcp-config"));
+  assert.ok(claude.includes("--append-system-prompt"));
+  assert.equal(claude.at(-1), "GO", "the opening turn is the prompt argument");
+  assert.match(claude[claude.indexOf("--mcp-config") + 1], /"MORSE_AGENT":"backend"/);
+
+  const codex = buildHarnessArgs({ ...base, harness: "codex" });
+  // Codex has no system-prompt flag, so the protocol rides in the prompt.
+  assert.ok(!codex.includes("--append-system-prompt"));
+  assert.ok(!codex.includes("--mcp-config"));
+  assert.ok(codex.some((a) => a.startsWith("mcp_servers.morse.command=")));
+  assert.ok(codex.some((a) => a.includes('MORSE_AGENT="backend"')));
+  assert.match(codex.at(-1), /PROTOCOL[\s\S]*GO/);
+});

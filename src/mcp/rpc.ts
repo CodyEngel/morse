@@ -30,6 +30,8 @@ export interface ServerOptions {
   version: string;
   tools: ToolDefinition[];
   call: ToolHandler;
+  /** The client identifies itself in the handshake; more reliable than env sniffing. */
+  onInitialize?: (clientInfo: { name?: string; version?: string }) => void;
   /** Invoked once the transport closes, so the server can mark itself offline. */
   onShutdown?: () => void;
 }
@@ -103,6 +105,8 @@ export function serve(options: ServerOptions): void {
     try {
       switch (msg.method) {
         case "initialize": {
+          const clientInfo = msg.params?.clientInfo as { name?: string; version?: string } | undefined;
+          if (clientInfo) options.onInitialize?.(clientInfo);
           const requested = msg.params?.protocolVersion;
           const protocolVersion =
             typeof requested === "string" && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)

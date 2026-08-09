@@ -22,6 +22,14 @@ export function runMcpServer(): void {
     name: "morse",
     version: VERSION,
     tools: TOOLS,
+    onInitialize: (clientInfo) => {
+      // The handshake is the only place the harness reliably names itself.
+      // Sniffing env vars misses any harness that does not pass its own
+      // environment through to the MCP servers it launches — Codex, for one,
+      // which showed up on the roster as "unknown".
+      const harness = normalizeHarness(clientInfo.name);
+      if (identity && harness) store.register({ room, name: identity, harness });
+    },
     onShutdown: () => {
       if (identity) {
         try {
@@ -33,12 +41,19 @@ export function runMcpServer(): void {
     },
     call: async (tool, args, ctx) => {
       if (tool === "morse_register") {
-        const name = String(args.name ?? identity ?? "").trim();
+        // Identity is assigned by whoever launched the agent, not chosen by the
+        // model. A session that renames itself here would orphan the identity
+        // its teammates are addressing and appear twice in the same process —
+        // which is exactly what one harness did, registering as "root".
+        const assigned = process.env.MORSE_AGENT?.trim();
+        const requested = String(args.name ?? "").trim();
+        const name = assigned || requested || identity;
         if (!name) {
           throw new Error(
             "No agent name. Pass `name`, or set MORSE_AGENT in the morse MCP server's env (see `morse init`).",
           );
         }
+        const renamed = Boolean(assigned && requested && requested !== assigned);
         identity = name;
         // Whatever the agent says about itself wins; the env carries whatever a
         // role file supplied at launch. The server itself knows no roles.
@@ -57,6 +72,13 @@ export function runMcpServer(): void {
           room,
           registered: renderAgent(agent),
           roster: store.roster(room).map(renderAgent),
+          ...(renamed
+            ? {
+                notice:
+                  `Your name is '${assigned}', assigned when this session was launched, so '${requested}' was ignored. ` +
+                  "Your teammates address you by the assigned name. You may still update your role, description and skills.",
+              }
+            : {}),
           hint: "Check the roster before asking questions, and call morse_wait when you have nothing to do.",
         };
       }
@@ -297,12 +319,24 @@ function hintForAsk(outcome: string, threadId: string): string {
   }
 }
 
+/** Best guess at startup; the handshake corrects it a moment later. */
 function detectHarness(): string {
   const env = process.env;
+  if (env.MORSE_HARNESS) return env.MORSE_HARNESS;
   if (env.CLAUDECODE || env.CLAUDE_CODE || env.CLAUDE_CODE_ENTRYPOINT) return "claude-code";
-  if (env.CODEX_SANDBOX || env.CODEX_HOME || env.CODEX_THREAD_ID) return "codex";
+  if (env.CODEX_SANDBOX || env.CODEX_THREAD_ID) return "codex";
   if (env.OPENCODE || env.OPENCODE_SERVER) return "opencode";
-  return env.MORSE_HARNESS ?? "unknown";
+  return "unknown";
+}
+
+/** Client names vary in casing and spacing between harnesses and releases. */
+function normalizeHarness(name: string | undefined): string | undefined {
+  const cleaned = name?.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  if (!cleaned) return undefined;
+  if (cleaned.includes("claude")) return "claude-code";
+  if (cleaned.includes("codex")) return "codex";
+  if (cleaned.includes("opencode")) return "opencode";
+  return cleaned;
 }
 
 function renderAgent(agent: {

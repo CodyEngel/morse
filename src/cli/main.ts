@@ -123,40 +123,32 @@ async function join_(args: Args, room: string): Promise<void> {
   // just describes itself instead of being handed a description.
   const role = loadRole(name);
   const cliPath = fileURLToPath(new URL("../cli.js", import.meta.url));
-  const mcpConfig = {
-    mcpServers: {
-      morse: {
-        command: process.execPath,
-        args: [cliPath, "mcp"],
-        env: {
-          MORSE_AGENT: name,
-          MORSE_ROOM: room,
-          ...(role?.role ? { MORSE_ROLE: role.role } : {}),
-          ...(role?.description ? { MORSE_DESCRIPTION: role.description } : {}),
-          ...(role?.skills.length ? { MORSE_SKILLS: role.skills.join(",") } : {}),
-          ...(process.env.MORSE_DB ? { MORSE_DB: process.env.MORSE_DB } : {}),
-          ...(process.env.MORSE_HOME ? { MORSE_HOME: process.env.MORSE_HOME } : {}),
-        },
-      },
-    },
+  const serverEnv: Record<string, string> = {
+    MORSE_AGENT: name,
+    MORSE_ROOM: room,
+    ...(role?.role ? { MORSE_ROLE: role.role } : {}),
+    ...(role?.description ? { MORSE_DESCRIPTION: role.description } : {}),
+    ...(role?.skills.length ? { MORSE_SKILLS: role.skills.join(",") } : {}),
+    ...(process.env.MORSE_DB ? { MORSE_DB: process.env.MORSE_DB } : {}),
+    ...(process.env.MORSE_HOME ? { MORSE_HOME: process.env.MORSE_HOME } : {}),
   };
 
   const systemPrompt = buildPrompt({ name, room, role });
   const harness = String(args.flags.harness ?? "claude");
-  const harnessArgs = [
-    "--mcp-config",
-    JSON.stringify(mcpConfig),
-    "--append-system-prompt",
-    systemPrompt,
-    ...args.passthrough,
-  ];
+  const headless = args.passthrough.some((arg) => arg === "-p" || arg === "--print" || arg === "exec");
 
-  // Without an opening turn the session registers and then sits at the prompt:
-  // present on the roster, accumulating mail, listening to none of it, and
-  // indistinguishable from a crash until a human happens to type something.
-  // Seeding the first turn is what puts the agent into its wait loop.
-  const headless = args.passthrough.some((arg) => arg === "-p" || arg === "--print");
-  if (!headless) harnessArgs.push(OPENING_TURN);
+  const harnessArgs = buildHarnessArgs({
+    harness,
+    node: process.execPath,
+    cliPath,
+    serverEnv,
+    systemPrompt,
+    passthrough: args.passthrough,
+    // Without an opening turn the session registers and then sits at the
+    // prompt: present on the roster, accumulating mail, listening to none of
+    // it, and indistinguishable from a crash until a human types something.
+    opening: headless ? undefined : OPENING_TURN,
+  });
 
   console.log(
     `${dim("morse:")} joining ${agentColor(name)(bold(name))} to room ${cyan(room)} via ${harness}`,
@@ -185,6 +177,61 @@ async function join_(args: Args, room: string): Promise<void> {
       resolve();
     });
   });
+}
+
+interface HarnessInvocation {
+  harness: string;
+  node: string;
+  cliPath: string;
+  serverEnv: Record<string, string>;
+  systemPrompt: string;
+  passthrough: string[];
+  opening?: string;
+}
+
+/**
+ * Every harness speaks MCP, but none of them agree on how to be told about a
+ * server or how to have instructions injected. The bus is portable; the launch
+ * command is not, so the difference is confined to here.
+ */
+export function buildHarnessArgs(options: HarnessInvocation): string[] {
+  const { harness, node, cliPath, serverEnv, systemPrompt, passthrough, opening } = options;
+  const kind = harnessKind(harness);
+
+  if (kind === "codex") {
+    // Codex takes inline TOML config overrides rather than a JSON blob, and has
+    // no system-prompt flag at all — so the protocol goes in the opening turn.
+    const env = Object.entries(serverEnv)
+      .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+      .join(", ");
+    const args = [
+      "-c",
+      `mcp_servers.morse.command=${JSON.stringify(node)}`,
+      "-c",
+      `mcp_servers.morse.args=[${JSON.stringify(cliPath)}, "mcp"]`,
+      "-c",
+      `mcp_servers.morse.env={${env}}`,
+      ...passthrough,
+    ];
+    const brief = opening ? `${systemPrompt}\n\n---\n\n${opening}` : systemPrompt;
+    args.push(brief);
+    return args;
+  }
+
+  // Claude Code, and the default for anything unrecognised.
+  const args = [
+    "--mcp-config",
+    JSON.stringify({ mcpServers: { morse: { command: node, args: [cliPath, "mcp"], env: serverEnv } } }),
+    "--append-system-prompt",
+    systemPrompt,
+    ...passthrough,
+  ];
+  if (opening) args.push(opening);
+  return args;
+}
+
+function harnessKind(harness: string): "claude" | "codex" {
+  return /(^|\/)codex(-cli)?$/.test(harness.trim()) ? "codex" : "claude";
 }
 
 // -------------------------------------------------------------- inspection

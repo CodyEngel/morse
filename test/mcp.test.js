@@ -173,3 +173,47 @@ test("leaving marks the agent offline for everyone else", async () => {
   const entry = roster.agents.find((x) => x.name === "leaver");
   assert.equal(entry.online, false);
 });
+
+test("the harness is taken from the handshake, not guessed from env", async () => {
+  // Env sniffing misses any harness that does not pass its own environment to
+  // the MCP servers it launches, which is how Codex agents showed up as
+  // "unknown" on the roster.
+  const a = client("handshake-harness", "harness-room");
+  await a.request("initialize", {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: { name: "Codex CLI", version: "0.147.0" },
+  });
+  a.notify("notifications/initialized", {});
+
+  const roster = await a.call("morse_roster");
+  const me = roster.agents.find((x) => x.name === "handshake-harness");
+  assert.equal(me.harness, "codex", "client name should be normalized onto the roster");
+});
+
+test("an agent cannot rename itself out of its assigned identity", async () => {
+  // A model that picks its own name orphans the identity its teammates are
+  // addressing, and shows up twice from a single process.
+  const a = client("assigned-name", "identity-room");
+  await a.initialize();
+
+  const result = await a.call("morse_register", { name: "root", role: "Primary agent" });
+  assert.equal(result.you, "assigned-name");
+  assert.match(result.notice, /assigned/i);
+
+  const roster = await a.call("morse_roster");
+  assert.deepEqual(roster.agents.map((x) => x.name), ["assigned-name"], "no duplicate identity");
+  // The parts an agent legitimately owns still take effect.
+  assert.equal(roster.agents[0].role, "Primary agent");
+});
+
+test("without an assigned identity an agent may name itself", async () => {
+  // The unmanaged path: someone wired the server up by hand with no MORSE_AGENT.
+  const a = new McpClient({ MORSE_DB: DB, MORSE_ROOM: "selfnamed-room" });
+  clients.push(a);
+  await a.initialize();
+
+  const result = await a.call("morse_register", { name: "chose-my-own", role: "Analyst" });
+  assert.equal(result.you, "chose-my-own");
+  assert.equal(result.notice, undefined);
+});
