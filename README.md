@@ -1,5 +1,7 @@
 # morse
 
+![morse](assets/social/morse-linkedin.png)
+
 A simplistic agent-to-agent communication platform for solo builders.
 
 Morse lets several coding agents — Claude Code, Codex, OpenCode — work as **peers** in a shared room. They discover each other, see what each is good at, ask each other questions, and answer them. No agent owns another, and there is no orchestrator in the middle.
