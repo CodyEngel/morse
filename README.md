@@ -17,21 +17,20 @@ Zero runtime dependencies. One SQLite file. Works in any harness that speaks MCP
 ## Quick start
 
 ```bash
-npm install && npm run build
+npm install -g morse
 ```
 
-Open six terminals and put one agent in each:
+Open a terminal per agent and join the room. Any name works — morse ships no roles, and an agent describes itself over the bus:
 
 ```bash
 morse join product-owner     # terminal 1
-morse join frontend          # terminal 2
-morse join backend           # terminal 3
-morse join devops            # terminal 4
-morse join secops            # terminal 5
-morse join qe                # terminal 6
+morse join backend           # terminal 2
+morse join qe                # terminal 3
 ```
 
 Each command starts a normal Claude Code session that is already a member of the room, already knows who its teammates are, and already knows the protocol. Then give any one of them a task and watch it spread.
+
+To hand agents a prepared identity instead, define [role files](#roles-are-not-morses-job) — or point `$MORSE_ROLES` at a pack of them.
 
 In a seventh terminal, watch the traffic:
 
@@ -114,7 +113,7 @@ morse send <to> <message>               Send as the human operator
 morse ask <to> <question>               Send and wait for an answer
 morse status                            One-line summary of the room
 morse rooms                             All rooms on this machine
-morse roles                             Built-in role presets
+morse roles [new <name>]                Roles found, and where morse looked
 morse prompt <agent>                    Print the protocol prompt for an agent
 morse init                              Write .mcp.json for a plain `claude`
 morse reset                             Clear the room
@@ -127,17 +126,39 @@ morse mcp                               Run the MCP server
 
 The store is machine-wide (`~/.morse/morse.db`), and rooms keep projects apart. The room defaults to your git repository's name, so agents started in the same project find each other and agents in a different project do not. Override with `--room` or `$MORSE_ROOM`.
 
-## Roles
+## Roles are not morse's job
 
-Six presets ship with morse — `product-owner`, `frontend`, `backend`, `devops`, `secops`, `qe` — each with a capability blurb and role-specific guidance. See `morse roles`.
+Morse is a transport layer. It ships **no roles** — an agent works fine without one, joining under whatever name you give it and describing itself over the bus with `morse_register`.
 
-They are conveniences, not a fixed cast. Any name works:
+What morse defines is the *shape* of a role and where to look for one. A role is a markdown file: frontmatter is published to the roster, the body is private guidance appended to that agent's system prompt.
 
-```bash
-morse join data-science
+```markdown
+---
+role: Backend Engineer
+description: Owns APIs, data modelling, SQL, and query performance.
+skills: [sql, api-design, performance]
+---
+
+You own the API and data layer. Route UI questions to the frontend engineer.
 ```
 
-An agent joined this way describes itself with `morse_register`, and from that moment its teammates can find it by capability like anyone else.
+Save it as `.morse/roles/backend.md` and `morse join backend` picks it up. To start from a template:
+
+```bash
+morse roles new backend      # scaffold
+morse roles                  # what is defined, and where morse looked
+```
+
+Lookup runs nearest-first, so a project can override one role from a shared pack without forking it:
+
+```
+./.morse/roles          # this directory
+<git root>/.morse/roles # this project
+$MORSE_ROLES            # shared packs (colon-separated)
+~/.morse/roles          # your personal defaults
+```
+
+A "batteries-included" role pack is therefore just a directory of markdown — point `$MORSE_ROLES` at it, no plugin API involved. `examples/roles/` in this repo holds a six-role set (product owner, frontend, backend, devops, secops, qe) used by the tests; it is not part of the published package.
 
 ## Other harnesses
 
@@ -167,6 +188,7 @@ An agent joined this way describes itself with `morse_register`, and from that m
 | `MORSE_DB` | `$MORSE_HOME/morse.db` | Full path to the store. |
 | `MORSE_WAIT_SECONDS` | `50` | Default park duration for `morse_wait`. |
 | `MORSE_OPERATOR` | `operator` | Your name when you use `morse send` / `morse ask`. |
+| `MORSE_ROLES` | — | Colon-separated directories of role files to search. |
 
 Claude Code's default MCP tool timeout is effectively unbounded, so a longer `MORSE_WAIT_SECONDS` is safe there. The 50-second default is chosen to stay inside stricter harnesses.
 

@@ -3,7 +3,24 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpClient } from "./helpers/client.js";
+
+// Morse ships no roles, so the cast comes from example role files — the same
+// path a published roles package would take.
+process.env.MORSE_ROLES = fileURLToPath(new URL("../examples/roles", import.meta.url));
+const { loadRole } = await import("../dist/index.js");
+
+/** Turn a role file into the env `morse join` would hand the MCP server. */
+function roleEnv(name) {
+  const role = loadRole(name);
+  assert.ok(role, `expected an example role file for ${name}`);
+  return {
+    MORSE_ROLE: role.role,
+    MORSE_DESCRIPTION: role.description,
+    MORSE_SKILLS: role.skills.join(","),
+  };
+}
 
 /**
  * The acceptance criterion, minus the language model: six independent processes
@@ -114,7 +131,13 @@ test("six agents discover each other and collaborate as peers", async (t) => {
   for (const name of NAMES) {
     clients.set(
       name,
-      new McpClient({ MORSE_DB: DB, MORSE_AGENT: name, MORSE_ROOM: ROOM, MORSE_WAIT_SECONDS: "5" }),
+      new McpClient({
+        MORSE_DB: DB,
+        MORSE_AGENT: name,
+        MORSE_ROOM: ROOM,
+        MORSE_WAIT_SECONDS: "5",
+        ...roleEnv(name),
+      }),
     );
   }
   await Promise.all([...clients.values()].map((c) => c.initialize()));

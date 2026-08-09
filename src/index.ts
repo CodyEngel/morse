@@ -1,6 +1,13 @@
 export { openDb, dbPath, resetDb } from "./db.js";
 export { resolveRoom, sanitizeRoom } from "./room.js";
-export { ROLE_PRESETS, findPreset, type RolePreset } from "./roles.js";
+export {
+  loadRole,
+  listRoles,
+  parseRole,
+  roleSearchPaths,
+  roleTemplate,
+  type RoleDefinition,
+} from "./roles.js";
 export { buildPrompt, type PromptOptions } from "./prompt.js";
 export {
   Store,

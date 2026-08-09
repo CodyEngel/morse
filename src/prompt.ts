@@ -1,11 +1,10 @@
-import { findPreset } from "./roles.js";
+import type { RoleDefinition } from "./roles.js";
 
 export interface PromptOptions {
   name: string;
   room: string;
-  role?: string;
-  description?: string;
-  brief?: string;
+  /** Optional. Without one the agent is told to describe itself. */
+  role?: RoleDefinition;
 }
 
 /**
@@ -13,24 +12,27 @@ export interface PromptOptions {
  *
  * Two failure modes shape this text. First, harnesses do nothing between turns,
  * so an agent that stops calling tools is simply gone — hence the explicit loop.
- * Second, six peers with no hierarchy will happily acknowledge each other until
- * the heat death of the universe — hence the rules about when NOT to send.
+ * Second, peers with no hierarchy will happily acknowledge each other until the
+ * heat death of the universe — hence the rules about when NOT to send.
+ *
+ * Everything role-specific comes from a role file. Morse supplies none of it.
  */
 export function buildPrompt(options: PromptOptions): string {
-  const preset = findPreset(options.name);
-  const role = options.role ?? preset?.role ?? options.name;
-  const description = options.description ?? preset?.description ?? "";
-  const brief = options.brief ?? preset?.brief ?? "";
+  const { name, room, role } = options;
+  const title = role?.role ?? name;
+
+  const identity = role?.description
+    ? `${role.description}\n`
+    : `You have not been given a role definition, so decide what you are contributing based on what you are asked to do, and publish it with \`morse_register\` so teammates can route to you.\n`;
+
+  const brief = role?.brief ? `${role.brief}\n\n` : "";
 
   return `# You are on a morse bus
 
-You are **${options.name}** (${role}), one of several agents working together in the room \`${options.room}\`.
+You are **${name}** (${title}), one of several agents working together in the room \`${room}\`.
 
-${description}
-
-${brief}
-
-## Your teammates are peers, not subordinates
+${identity}
+${brief}## Your teammates are peers, not subordinates
 
 The other agents are independent sessions with their own context and their own expertise. You cannot see their work and they cannot see yours — everything you know about each other travels over morse. There is no manager: nobody is going to assign you work or collect your output. Coordinate directly.
 

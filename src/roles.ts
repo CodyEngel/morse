@@ -1,76 +1,206 @@
-export interface RolePreset {
-  /** Default agent name (and the `morse join <name>` argument). */
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
+
+/**
+ * Morse ships no roles. It defines the shape of one and where to find them.
+ *
+ * A role is a markdown file whose frontmatter is what the room sees and whose
+ * body is private guidance for that agent — the same split the bus already
+ * makes between a published capability blurb and an agent's own instructions.
+ * Deliberately the same shape as a Claude Code subagent file, so role packs are
+ * just a directory of markdown someone can read, diff, and edit by hand.
+ *
+ *   ---
+ *   role: Backend Engineer
+ *   description: Owns APIs, data modelling, SQL, and query performance.
+ *   skills: [sql, api-design, performance]
+ *   ---
+ *
+ *   You own the API and data layer. Route UI questions to the frontend engineer.
+ */
+export interface RoleDefinition {
+  /** Agent name. Defaults to the filename. */
   name: string;
-  role: string;
-  /** The capability blurb peers read when deciding who to ask. */
-  description: string;
+  /** Human-readable title, e.g. "Backend Engineer". */
+  role?: string;
+  /** Published to the roster. What peers read when deciding who to ask. */
+  description?: string;
   skills: string[];
-  /** Role-specific guidance appended to the agent's system prompt. */
-  brief: string;
+  /** Private guidance appended to this agent's system prompt. */
+  brief?: string;
+  /** Where it was loaded from, so `morse roles` can show precedence. */
+  source: string;
 }
 
 /**
- * Starting presets. These are conveniences, not a fixed cast — `morse join`
- * accepts any name, and `morse_register` accepts any description/skills.
+ * Where roles are looked up, nearest first. A project can override a shared
+ * pack, and a pack is just a directory — which is all an "official roles"
+ * package on npm needs to be.
  */
-export const ROLE_PRESETS: RolePreset[] = [
-  {
-    name: "product-owner",
-    role: "Product Owner",
-    description:
-      "Owns product requirements and the intent behind the work. Decides what 'done' means, resolves ambiguity in scope, and confirms delivered work meets the goal.",
-    skills: ["requirements", "scope", "acceptance-criteria", "prioritization", "user-intent"],
-    brief:
-      "You hold the intent behind the work. Others will ask you to disambiguate requirements and to confirm that finished work actually achieves the goal — answer decisively rather than deferring. When you need something built, address the engineer whose expertise fits and state the outcome you want, not the implementation.",
-  },
-  {
-    name: "frontend",
-    role: "Frontend Engineer",
-    description:
-      "Knows the frontend codebase, component structure, and how to make an app look and feel right. Not the person to ask about SQL or system performance.",
-    skills: ["ui", "ux", "css", "components", "accessibility", "client-state"],
-    brief:
-      "You own the frontend. Route questions about queries, indexes, or API performance to the backend engineer rather than guessing. Ask the product owner when a requirement is visually ambiguous.",
-  },
-  {
-    name: "backend",
-    role: "Backend Engineer",
-    description:
-      "Owns APIs, data modelling, SQL, and performance optimization of the services behind the product.",
-    skills: ["api-design", "sql", "data-modelling", "performance", "caching", "migrations"],
-    brief:
-      "You own the API and data layer. You care about query shape, indexes, and latency. Tell the frontend engineer what contracts you expose rather than letting them discover it.",
-  },
-  {
-    name: "devops",
-    role: "DevOps Engineer",
-    description:
-      "Intimately familiar with where the software is deployed and how to read and interpret logs to tell whether the system is behaving as intended.",
-    skills: ["deployment", "ci-cd", "observability", "logs", "infrastructure", "rollback"],
-    brief:
-      "You own deploy and runtime. When someone claims something works, you are the one who can say whether it works *in the environment it actually runs in*. Ask for specifics when a change has operational risk.",
-  },
-  {
-    name: "secops",
-    role: "SecOps Engineer",
-    description:
-      "Focused on the security of the system and knows where the bodies are buried. Exists to prevent credential leaks, over-broad access, and supply-chain surprises.",
-    skills: ["threat-modelling", "secrets", "authz", "dependency-risk", "data-exposure"],
-    brief:
-      "You own security. Review proposals for credential handling, trust boundaries, and data exposure before they ship. Raise concerns concretely — name the asset at risk and the realistic path to it, not generic warnings.",
-  },
-  {
-    name: "qe",
-    role: "Quality Engineer",
-    description:
-      "Asks the questions the others would rather not hear, because the honest answer often means reworking what was just built.",
-    skills: ["test-strategy", "edge-cases", "regression-risk", "acceptance-testing", "reproduction"],
-    brief:
-      "You are the person willing to say the work is not done. Probe edge cases, unstated assumptions, and failure modes. When you find a gap, address it to whoever owns that area and be specific about how to reproduce or verify it.",
-  },
-];
+export function roleSearchPaths(cwd = process.cwd()): string[] {
+  const paths: string[] = [join(cwd, ".morse", "roles")];
 
-export function findPreset(name: string): RolePreset | undefined {
-  const key = name.trim().toLowerCase();
-  return ROLE_PRESETS.find((p) => p.name === key || p.role.toLowerCase() === key);
+  const root = gitRoot(cwd);
+  if (root && root !== cwd) paths.push(join(root, ".morse", "roles"));
+
+  // $MORSE_ROLES points at shared packs, so it sits below the project but above
+  // the personal default: a repo can override one role from a pack without
+  // forking the pack, and the pack still beats whatever is in your home dir.
+  const packs = process.env.MORSE_ROLES?.split(":").map((p) => p.trim()).filter(Boolean) ?? [];
+  paths.push(...packs.map((p) => resolve(p)));
+
+  paths.push(join(process.env.MORSE_HOME ?? join(homedir(), ".morse"), "roles"));
+
+  return [...new Set(paths)];
+}
+
+/** First match wins, so a nearer definition shadows a shared one. */
+export function loadRole(name: string, cwd = process.cwd()): RoleDefinition | undefined {
+  const wanted = name.trim().toLowerCase();
+  for (const dir of roleSearchPaths(cwd)) {
+    for (const extension of [".md", ".markdown"]) {
+      const path = join(dir, `${wanted}${extension}`);
+      if (existsSync(path)) return parseRole(readFileSync(path, "utf8"), path);
+    }
+  }
+  return undefined;
+}
+
+export function listRoles(cwd = process.cwd()): RoleDefinition[] {
+  const seen = new Map<string, RoleDefinition>();
+  for (const dir of roleSearchPaths(cwd)) {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      continue; // Missing search directories are normal, not an error.
+    }
+    for (const entry of entries.sort()) {
+      if (!/\.(md|markdown)$/i.test(entry)) continue;
+      const definition = parseRole(readFileSync(join(dir, entry), "utf8"), join(dir, entry));
+      if (!seen.has(definition.name)) seen.set(definition.name, definition);
+    }
+  }
+  return [...seen.values()];
+}
+
+export function parseRole(text: string, source: string): RoleDefinition {
+  const { fields, body } = splitFrontmatter(text);
+  const fallbackName = basename(source).replace(/\.(md|markdown)$/i, "");
+  const brief = body.trim();
+  return {
+    name: (fields.name ?? fallbackName).toString().toLowerCase(),
+    role: asString(fields.role),
+    description: asString(fields.description),
+    skills: asList(fields.skills),
+    brief: brief || undefined,
+    source,
+  };
+}
+
+type Fields = Record<string, string | string[]>;
+
+/**
+ * A deliberately small frontmatter reader: `key: value`, inline `[a, b]` lists,
+ * and `- item` block lists. That covers the role contract without taking on a
+ * YAML dependency, and anything it cannot parse is a sign the file is doing
+ * more than a role definition should.
+ */
+function splitFrontmatter(text: string): { fields: Fields; body: string } {
+  const normalized = text.replace(/^﻿/, "");
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(normalized);
+  if (!match) return { fields: {}, body: normalized };
+
+  const fields: Fields = {};
+  const lines = match[1]!.split(/\r?\n/);
+  let currentKey: string | undefined;
+
+  for (const line of lines) {
+    if (!line.trim() || line.trim().startsWith("#")) continue;
+
+    const listItem = /^\s*-\s+(.*)$/.exec(line);
+    if (listItem && currentKey) {
+      const existing = fields[currentKey];
+      const list = Array.isArray(existing) ? existing : [];
+      list.push(unquote(listItem[1]!));
+      fields[currentKey] = list;
+      continue;
+    }
+
+    const pair = /^([A-Za-z0-9_-]+)\s*:\s*(.*)$/.exec(line);
+    if (!pair) continue;
+    const [, key, rawValue] = pair;
+    currentKey = key!;
+    const value = rawValue!.trim();
+
+    if (value === "") {
+      fields[currentKey] = [];
+    } else if (value.startsWith("[") && value.endsWith("]")) {
+      fields[currentKey] = value
+        .slice(1, -1)
+        .split(",")
+        .map((item) => unquote(item.trim()))
+        .filter(Boolean);
+    } else {
+      fields[currentKey] = unquote(value);
+    }
+  }
+
+  return { fields, body: normalized.slice(match[0].length) };
+}
+
+function unquote(value: string): string {
+  return value.replace(/^["']|["']$/g, "").trim();
+}
+
+function asString(value: string | string[] | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const text = Array.isArray(value) ? value.join(", ") : value;
+  return text.trim() || undefined;
+}
+
+function asList(value: string | string[] | undefined): string[] {
+  if (value === undefined) return [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function gitRoot(cwd: string): string | undefined {
+  try {
+    const root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return root || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Scaffold shown by `morse roles new`, and the contract's reference example. */
+export function roleTemplate(name: string): string {
+  return `---
+role: ${title(name)}
+description: Name what you own and, just as importantly, what you do not. This is what teammates read when deciding who to ask.
+skills: [replace-me, with-short-tags]
+---
+
+Private guidance for this agent, appended to its system prompt. Say how it
+should behave, what it should push back on, and who it should route work to
+when a request lands outside its lane.
+`;
+}
+
+function title(name: string): string {
+  return name
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((word) => word[0]!.toUpperCase() + word.slice(1))
+    .join(" ");
 }

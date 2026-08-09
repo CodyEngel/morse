@@ -1,6 +1,5 @@
 import { hostname } from "node:os";
 import { resolveRoom } from "../room.js";
-import { findPreset } from "../roles.js";
 import { BROADCAST, Store, normalizeRecipients, type AgentStatus, type Message } from "../store.js";
 import { VERSION } from "../version.js";
 import { waitForInbox, waitForReply } from "../wait.js";
@@ -41,13 +40,14 @@ export function runMcpServer(): void {
           );
         }
         identity = name;
-        const preset = findPreset(name);
+        // Whatever the agent says about itself wins; the env carries whatever a
+        // role file supplied at launch. The server itself knows no roles.
         const agent = store.register({
           room,
           name,
-          role: (args.role as string | undefined) ?? preset?.role,
-          description: (args.description as string | undefined) ?? preset?.description,
-          skills: (args.skills as string[] | undefined) ?? preset?.skills,
+          role: (args.role as string | undefined) ?? process.env.MORSE_ROLE,
+          description: (args.description as string | undefined) ?? process.env.MORSE_DESCRIPTION,
+          skills: (args.skills as string[] | undefined) ?? envSkills(),
           harness: detectHarness(),
           pid: process.pid,
           cwd: process.cwd(),
@@ -242,17 +242,22 @@ export function runMcpServer(): void {
 }
 
 function registerSelf(store: Store, room: string, name: string): void {
-  const preset = findPreset(name);
   store.register({
     room,
     name,
-    role: process.env.MORSE_ROLE ?? preset?.role,
-    description: process.env.MORSE_DESCRIPTION ?? preset?.description,
-    skills: process.env.MORSE_SKILLS?.split(",").map((s) => s.trim()).filter(Boolean) ?? preset?.skills,
+    role: process.env.MORSE_ROLE,
+    description: process.env.MORSE_DESCRIPTION,
+    skills: envSkills(),
     harness: detectHarness(),
     pid: process.pid,
     cwd: process.cwd(),
   });
+}
+
+function envSkills(): string[] | undefined {
+  const raw = process.env.MORSE_SKILLS;
+  if (!raw) return undefined;
+  return raw.split(",").map((skill) => skill.trim()).filter(Boolean);
 }
 
 function requireIdentity(identity: string): string {

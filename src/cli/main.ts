@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { runMcpServer } from "../mcp/server.js";
 import { buildPrompt } from "../prompt.js";
 import { resolveRoom, sanitizeRoom } from "../room.js";
-import { ROLE_PRESETS, findPreset } from "../roles.js";
+import { listRoles, loadRole, roleSearchPaths, roleTemplate } from "../roles.js";
 import { BROADCAST, Store, normalizeRecipients } from "../store.js";
 import { VERSION } from "../version.js";
 import { waitForReply } from "../wait.js";
@@ -20,7 +20,7 @@ const HELP = `morse ${VERSION} — agent-to-agent communication for solo builder
   morse ask <to> <question>               Send and wait for an answer
   morse status                            One-line summary of the room
   morse rooms                             All rooms on this machine
-  morse roles                             Built-in role presets
+  morse roles [new <name>]                Role definitions found, and where morse looks
   morse prompt <agent>                    Print the protocol prompt for an agent
   morse init                              Write .mcp.json so plain \`claude\` sees morse
   morse reset                             Clear the room
@@ -30,7 +30,8 @@ Options:
   --room <name>   Override the room (default: this git repo's name)
   --help          Show this message
 
-The store is machine-wide at ~/.morse/morse.db; rooms keep projects apart.`;
+The store is machine-wide at ~/.morse/morse.db; rooms keep projects apart.
+Morse ships no roles; \`morse roles\` shows where it looks for them.`;
 
 const OPENING_TURN =
   "Join the room: call morse_register, then morse_roster to see who is here and what they own, " +
@@ -79,7 +80,7 @@ export async function main(argv: string[]): Promise<void> {
     case "rooms":
       return rooms();
     case "roles":
-      return roles();
+      return roles(args);
     case "prompt":
       return prompt(args, room);
     case "init":
@@ -106,13 +107,21 @@ export async function main(argv: string[]): Promise<void> {
 async function join_(args: Args, room: string): Promise<void> {
   const name = args.positional[0];
   if (!name) {
-    console.error("Usage: morse join <agent>\n\nBuilt-in agents:");
-    for (const preset of ROLE_PRESETS) console.error(`  ${preset.name.padEnd(16)} ${preset.role}`);
+    console.error("Usage: morse join <agent>\n");
+    const available = listRoles();
+    if (available.length) {
+      console.error("Roles found:");
+      for (const entry of available) console.error(`  ${entry.name.padEnd(16)} ${entry.role ?? ""}`);
+    } else {
+      console.error("Any name works. `morse roles` shows where role definitions are looked up.");
+    }
     process.exitCode = 1;
     return;
   }
 
-  const preset = findPreset(name);
+  // A role is optional. Without one the agent still joins and coordinates; it
+  // just describes itself instead of being handed a description.
+  const role = loadRole(name);
   const cliPath = fileURLToPath(new URL("../cli.js", import.meta.url));
   const mcpConfig = {
     mcpServers: {
@@ -122,7 +131,9 @@ async function join_(args: Args, room: string): Promise<void> {
         env: {
           MORSE_AGENT: name,
           MORSE_ROOM: room,
-          ...(preset ? {} : { MORSE_ROLE: name }),
+          ...(role?.role ? { MORSE_ROLE: role.role } : {}),
+          ...(role?.description ? { MORSE_DESCRIPTION: role.description } : {}),
+          ...(role?.skills.length ? { MORSE_SKILLS: role.skills.join(",") } : {}),
           ...(process.env.MORSE_DB ? { MORSE_DB: process.env.MORSE_DB } : {}),
           ...(process.env.MORSE_HOME ? { MORSE_HOME: process.env.MORSE_HOME } : {}),
         },
@@ -130,7 +141,7 @@ async function join_(args: Args, room: string): Promise<void> {
     },
   };
 
-  const systemPrompt = buildPrompt({ name, room });
+  const systemPrompt = buildPrompt({ name, room, role });
   const harness = String(args.flags.harness ?? "claude");
   const harnessArgs = [
     "--mcp-config",
@@ -182,7 +193,7 @@ function roster(room: string): void {
   const store = new Store();
   const agents = store.roster(room);
   if (agents.length === 0) {
-    console.log(`No agents in room ${cyan(room)} yet. Start one with ${bold("morse join product-owner")}.`);
+    console.log(`No agents in room ${cyan(room)} yet. Start one with ${bold("morse join <agent>")}.`);
     return;
   }
 
@@ -252,12 +263,51 @@ function rooms(): void {
   }
 }
 
-function roles(): void {
-  for (const preset of ROLE_PRESETS) {
-    console.log(`${bold(preset.name.padEnd(16))} ${preset.role}`);
-    console.log(`  ${wrapText(preset.description, 76, "  ")}`);
-    console.log(`  ${dim(preset.skills.join(" · "))}\n`);
+/**
+ * Morse ships no roles, so this reports what the machine actually has and where
+ * it looked — which is the only way to explain precedence when a project role
+ * shadows a shared one.
+ */
+function roles(args: Args): void {
+  if (args.positional[0] === "new") return newRole(args.positional[1]);
+
+  const found = listRoles();
+  if (found.length === 0) {
+    console.log("No role definitions found.\n");
+    console.log("Morse does not ship roles — an agent works fine without one, and describes");
+    console.log("itself over the bus. To define one:\n");
+    console.log(`  ${bold("morse roles new backend")}\n`);
+  } else {
+    for (const entry of found) {
+      console.log(`${bold(entry.name.padEnd(16))} ${entry.role ?? ""}`);
+      if (entry.description) console.log(`  ${wrapText(entry.description, 76, "  ")}`);
+      if (entry.skills.length) console.log(`  ${dim(entry.skills.join(" · "))}`);
+      console.log(`  ${dim(entry.source)}\n`);
+    }
   }
+
+  console.log(dim("Looked up in order:"));
+  for (const path of roleSearchPaths()) console.log(dim(`  ${path}`));
+}
+
+function newRole(name: string | undefined): void {
+  if (!name) {
+    console.error("Usage: morse roles new <name>");
+    process.exitCode = 1;
+    return;
+  }
+  const dir = join(process.cwd(), ".morse", "roles");
+  const path = join(dir, `${name.toLowerCase()}.md`);
+  if (existsSync(path)) {
+    console.error(`${path} already exists.`);
+    process.exitCode = 1;
+    return;
+  }
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path, roleTemplate(name));
+  console.log(`Wrote ${bold(path)}\n`);
+  console.log("Frontmatter is published to the roster; the body is private guidance for");
+  console.log(`that agent. Then: ${bold(`morse join ${name.toLowerCase()}`)}`);
 }
 
 function prompt(args: Args, room: string): void {
@@ -267,7 +317,7 @@ function prompt(args: Args, room: string): void {
     process.exitCode = 1;
     return;
   }
-  console.log(buildPrompt({ name, room }));
+  console.log(buildPrompt({ name, room, role: loadRole(name) }));
 }
 
 // ------------------------------------------------------------ participation

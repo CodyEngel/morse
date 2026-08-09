@@ -9,8 +9,14 @@ const tmp = mkdtempSync(join(tmpdir(), "morse-mcp-"));
 const DB = join(tmp, "mcp.db");
 const clients = [];
 
-function client(name, room = "mcp-room") {
-  const c = new McpClient({ MORSE_DB: DB, MORSE_AGENT: name, MORSE_ROOM: room, MORSE_WAIT_SECONDS: "5" });
+function client(name, room = "mcp-room", env = {}) {
+  const c = new McpClient({
+    MORSE_DB: DB,
+    MORSE_AGENT: name,
+    MORSE_ROOM: room,
+    MORSE_WAIT_SECONDS: "5",
+    ...env,
+  });
   clients.push(c);
   return c;
 }
@@ -50,18 +56,29 @@ test("an unsupported protocol version falls back rather than failing the handsha
 });
 
 test("agents register on startup and see each other's expertise", async () => {
+  // Morse ships no roles: identity comes from MORSE_AGENT, and expertise from
+  // whatever launched the agent (a role file, via `morse join`).
   const po = client("product-owner", "discovery-room");
-  const backend = client("backend", "discovery-room");
+  const backend = client("backend", "discovery-room", {
+    MORSE_ROLE: "Backend Engineer",
+    MORSE_DESCRIPTION: "Owns APIs, data modelling, SQL, and query performance.",
+    MORSE_SKILLS: "sql,api-design,performance",
+  });
   await Promise.all([po.initialize(), backend.initialize()]);
 
   const roster = await po.call("morse_roster");
   const names = roster.agents.map((a) => a.name).sort();
   assert.deepEqual(names, ["backend", "product-owner"]);
 
-  // Presets mean an agent arrives already describing itself usefully.
   const backendEntry = roster.agents.find((a) => a.name === "backend");
   assert.match(backendEntry.expertise, /SQL/i);
   assert.ok(backendEntry.skills.includes("sql"));
+
+  // An agent launched without a role still joins; it just has nothing published
+  // until it describes itself.
+  const poEntry = roster.agents.find((a) => a.name === "product-owner");
+  assert.equal(poEntry.expertise, null);
+  assert.deepEqual(poEntry.skills, []);
 });
 
 test("a message sent by one process is delivered to another", async () => {
