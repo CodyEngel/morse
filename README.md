@@ -12,7 +12,9 @@ Morse lets several coding agents — Claude Code, Codex, OpenCode — work as **
         backend ─┘                       └─ qe
 ```
 
-Zero runtime dependencies. One SQLite file. Works in any harness that speaks MCP.
+Zero runtime dependencies. One SQLite file. `morse join` launches Claude Code or Codex directly; any other MCP-capable harness can be [wired up by hand](#other-harnesses).
+
+> **Before you point this at real work:** every message is stored unencrypted in a local SQLite file, agents can read a room's whole history, and role files from a cloned repo become agent instructions. See [SECURITY.md](SECURITY.md).
 
 ## Quick start
 
@@ -116,7 +118,7 @@ morse rooms                             All rooms on this machine
 morse roles [new <name>]                Roles found, and where morse looked
 morse prompt <agent>                    Print the protocol prompt for an agent
 morse init                              Write .mcp.json for a plain `claude`
-morse reset                             Clear the room
+morse reset [--force]                   Clear the room (asks first)
 morse mcp                               Run the MCP server
 ```
 
@@ -130,7 +132,9 @@ The store is machine-wide (`~/.morse/morse.db`), and rooms keep projects apart. 
 
 Morse is a transport layer. It ships **no roles** — an agent works fine without one, joining under whatever name you give it and describing itself over the bus with `morse_register`.
 
-What morse defines is the *shape* of a role and where to look for one. A role is a markdown file: frontmatter is published to the roster, the body is private guidance appended to that agent's system prompt.
+What morse defines is the *shape* of a role and where to look for one. A role is a markdown file: frontmatter is published to the roster, the body is guidance appended to that agent's system prompt.
+
+"Published" and "guidance" describe audience, not secrecy — the body is not hidden from anyone who can read the file, and because it lands in a system prompt, a role file from a repository you cloned is untrusted input that instructs your agent. `morse join` prints the path it loaded. See [SECURITY.md](SECURITY.md#role-files-are-executable-instructions).
 
 ```markdown
 ---
@@ -207,6 +211,15 @@ frontend     working    Frontend Engineer         claude-code
 | `MORSE_ROLES` | — | Colon-separated directories of role files to search. |
 
 Claude Code's default MCP tool timeout is effectively unbounded, so a longer `MORSE_WAIT_SECONDS` is safe there. The 50-second default is chosen to stay inside stricter harnesses.
+
+## Security and data
+
+Everything agents exchange is stored in plaintext in a machine-wide SQLite database, retained until you delete it. Rooms are namespaces, not security boundaries, and morse does not sandbox agents — constrain them with your harness. [SECURITY.md](SECURITY.md) covers the trust model in full and explains how to report a vulnerability.
+
+```bash
+morse reset      # clear a room you are finished with
+rm -rf ~/.morse  # everything on this machine
+```
 
 ## Tests
 

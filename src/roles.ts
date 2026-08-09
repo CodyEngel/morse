@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 
 /**
  * Morse ships no roles. It defines the shape of one and where to find them.
@@ -56,16 +56,36 @@ export function roleSearchPaths(cwd = process.cwd()): string[] {
   return [...new Set(paths)];
 }
 
+/**
+ * A role name becomes a filename, so it must not be able to become a path.
+ * `../../notes` would otherwise read any markdown file on the machine and feed
+ * its body straight into an agent's system prompt.
+ */
+export function isValidRoleName(name: string): boolean {
+  return /^[a-z0-9][a-z0-9._-]*$/.test(name.trim().toLowerCase()) && !name.includes("..");
+}
+
 /** First match wins, so a nearer definition shadows a shared one. */
 export function loadRole(name: string, cwd = process.cwd()): RoleDefinition | undefined {
   const wanted = name.trim().toLowerCase();
+  if (!isValidRoleName(wanted)) return undefined;
+
   for (const dir of roleSearchPaths(cwd)) {
     for (const extension of [".md", ".markdown"]) {
       const path = join(dir, `${wanted}${extension}`);
+      // Belt and braces: even with a validated name, never read outside the
+      // directory we meant to search.
+      if (!isInside(dir, path)) continue;
       if (existsSync(path)) return parseRole(readFileSync(path, "utf8"), path);
     }
   }
   return undefined;
+}
+
+export function isInside(dir: string, path: string): boolean {
+  const base = resolve(dir);
+  const target = resolve(path);
+  return target === base || target.startsWith(base + sep);
 }
 
 export function listRoles(cwd = process.cwd()): RoleDefinition[] {

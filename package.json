@@ -2,6 +2,23 @@
   "name": "morse",
   "version": "0.1.0",
   "description": "A simplistic agent-to-agent communication platform for solo builders.",
+  "keywords": [
+    "mcp",
+    "agents",
+    "multi-agent",
+    "claude-code",
+    "codex",
+    "opencode"
+  ],
+  "homepage": "https://github.com/CodyEngel/morse#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CodyEngel/morse.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CodyEngel/morse/issues"
+  },
+  "author": "Cody Engel",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
@@ -28,13 +45,5 @@
   "devDependencies": {
     "@types/node": "^24.3.0",
     "typescript": "^5.9.2"
-  },
-  "keywords": [
-    "mcp",
-    "agents",
-    "multi-agent",
-    "claude-code",
-    "codex",
-    "opencode"
-  ]
+  }
 }

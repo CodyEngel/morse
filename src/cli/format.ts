@@ -61,15 +61,39 @@ export function clock(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+// C0 controls except tab and newline, DEL, and the C1 range. Everything an
+// escape sequence needs to begin lives in here.
+const CONTROL_CHARS = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
+
+/**
+ * Make agent-authored text safe to print to a terminal.
+ *
+ * Every string morse renders — message bodies, subjects, names, roles, status
+ * notes — is written by an agent, and an agent is a text generator that can be
+ * talked into emitting anything. Printed raw, an ESC sequence can erase the
+ * line and forge output ("all agents converged ✓"), retitle the window, or use
+ * OSC 52 to write to the user's clipboard. Control characters are rendered in
+ * caret notation rather than dropped, so tampering is visible instead of silent.
+ */
+export function safe(text: string): string {
+  return text.replace(CONTROL_CHARS, (char) => {
+    const code = char.charCodeAt(0);
+    if (code === 0x7f) return "^?";
+    if (code < 0x20) return `^${String.fromCharCode(code + 64)}`;
+    return `\\x${code.toString(16).padStart(2, "0")}`;
+  });
+}
+
 export function formatMessage(message: Message): string {
-  const color = agentColor(message.sender);
-  const to = message.to.includes("*") ? "all" : message.to.join(", ");
+  const sender = safe(message.sender);
+  const color = agentColor(sender);
+  const to = message.to.includes("*") ? "all" : message.to.map(safe).join(", ");
   const arrow = message.kind === "system" ? "" : dim(` → ${to}`);
-  const head = `${dim(clock(message.createdAt))} ${color(bold(message.sender))}${arrow}`;
+  const head = `${dim(clock(message.createdAt))} ${color(bold(sender))}${arrow}`;
   const tag =
     message.kind === "ask" ? yellow(" [ask]") : message.kind === "reply" ? green(" [reply]") : "";
-  const subject = message.subject ? ` ${bold(message.subject)}` : "";
-  const body = message.body
+  const subject = message.subject ? ` ${bold(safe(message.subject))}` : "";
+  const body = safe(message.body)
     .trim()
     .split("\n")
     .map((line) => `    ${line}`)

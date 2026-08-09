@@ -1,6 +1,8 @@
 export { openDb, dbPath, resetDb } from "./db.js";
 export { resolveRoom, sanitizeRoom } from "./room.js";
 export {
+  isValidRoleName,
+  isInside,
   loadRole,
   listRoles,
   parseRole,

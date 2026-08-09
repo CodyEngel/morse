@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -77,9 +77,10 @@ let cached: DatabaseSync | undefined;
 
 export function openDb(path = dbPath()): DatabaseSync {
   if (cached) return cached;
-  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
 
   const db = new Database(path);
+  if (path !== ":memory:") restrictPermissions(path);
 
   // busy_timeout first, so every statement after it waits on a lock instead of
   // failing outright.
@@ -87,6 +88,8 @@ export function openDb(path = dbPath()): DatabaseSync {
   enableWal(db);
   db.exec("PRAGMA foreign_keys = ON");
   migrate(db);
+  // WAL sidecars only appear after the first write, so tighten them again now.
+  if (path !== ":memory:") restrictPermissions(path);
 
   cached = db;
   return db;
@@ -154,6 +157,32 @@ function backoff(attempt: number): number {
 function sleepSync(ms: number): void {
   const buffer = new Int32Array(new SharedArrayBuffer(4));
   Atomics.wait(buffer, 0, 0, ms);
+}
+
+/**
+ * Keep the store readable only by its owner.
+ *
+ * Everything agents say to each other lands here in plaintext — repository
+ * paths, working context, whatever they quote out of the codebase. SQLite
+ * creates databases at the process umask, which on a typical machine leaves
+ * them world-readable. This does not make the store a security boundary (any
+ * process running as this user can still read it) but it stops other accounts
+ * on a shared machine from reading the room. See SECURITY.md.
+ */
+function restrictPermissions(path: string): void {
+  for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+    try {
+      chmodSync(file, 0o600);
+    } catch {
+      // The sidecar files only exist once WAL is active, and a store owned by
+      // someone else is their business, not ours.
+    }
+  }
+  try {
+    chmodSync(dirname(path), 0o700);
+  } catch {
+    // Best effort; a shared parent directory is the operator's choice.
+  }
 }
 
 /** Test helper: drop the process-wide handle so a new path can be opened. */

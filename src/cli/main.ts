@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { runMcpServer } from "../mcp/server.js";
 import { buildPrompt } from "../prompt.js";
 import { resolveRoom, sanitizeRoom } from "../room.js";
-import { listRoles, loadRole, roleSearchPaths, roleTemplate } from "../roles.js";
+import { isValidRoleName, listRoles, loadRole, roleSearchPaths, roleTemplate } from "../roles.js";
 import { BROADCAST, Store, normalizeRecipients } from "../store.js";
 import { VERSION } from "../version.js";
 import { waitForReply } from "../wait.js";
-import { agentColor, bold, cyan, dim, formatMessage, relativeTime, statusBadge, yellow } from "./format.js";
+import { agentColor, bold, cyan, dim, formatMessage, relativeTime, safe, statusBadge, yellow } from "./format.js";
 
 const HELP = `morse ${VERSION} — agent-to-agent communication for solo builders
 
@@ -23,7 +23,7 @@ const HELP = `morse ${VERSION} — agent-to-agent communication for solo builder
   morse roles [new <name>]                Role definitions found, and where morse looks
   morse prompt <agent>                    Print the protocol prompt for an agent
   morse init                              Write .mcp.json so plain \`claude\` sees morse
-  morse reset                             Clear the room
+  morse reset [--force]                   Clear the room (asks first)
   morse mcp                               Run the MCP server (harnesses call this)
 
 Options:
@@ -86,7 +86,7 @@ export async function main(argv: string[]): Promise<void> {
     case "init":
       return init(room);
     case "reset":
-      return reset(room);
+      return reset(args, room);
     default:
       console.error(`Unknown command: ${args.command}\n`);
       console.log(HELP);
@@ -153,6 +153,9 @@ async function join_(args: Args, room: string): Promise<void> {
   console.log(
     `${dim("morse:")} joining ${agentColor(name)(bold(name))} to room ${cyan(room)} via ${harness}`,
   );
+  // The body of a role file is appended to the agent's system prompt, so a role
+  // picked up from a cloned repository is executable instruction. Name the file.
+  if (role) console.log(`${dim("morse:")} role from ${dim(role.source)}`);
 
   const child = spawn(harness, harnessArgs, {
     stdio: "inherit",
@@ -249,11 +252,11 @@ function roster(room: string): void {
     const color = agentColor(agent.name);
     const unread = store.unreadCount(room, agent.name);
     const badge = statusBadge(agent);
-    const note = agent.statusNote ? dim(` — ${agent.statusNote}`) : "";
-    console.log(`${color(bold(agent.name.padEnd(16)))} ${badge}${note}`);
-    if (agent.role) console.log(`  ${dim(agent.role)}`);
-    if (agent.description) console.log(`  ${wrapText(agent.description, 76, "  ")}`);
-    if (agent.skills.length) console.log(`  ${dim(agent.skills.join(" · "))}`);
+    const note = agent.statusNote ? dim(` — ${safe(agent.statusNote)}`) : "";
+    console.log(`${color(bold(safe(agent.name).padEnd(16)))} ${badge}${note}`);
+    if (agent.role) console.log(`  ${dim(safe(agent.role))}`);
+    if (agent.description) console.log(`  ${wrapText(safe(agent.description), 76, "  ")}`);
+    if (agent.skills.length) console.log(`  ${dim(safe(agent.skills.join(" · ")))}`);
     console.log(
       `  ${dim(`seen ${relativeTime(agent.lastSeen)}`)}${unread ? yellow(` · ${unread} unread`) : ""}\n`,
     );
@@ -271,7 +274,7 @@ function status(room: string): void {
       `${store.maxMessageId(room)} messages`,
   );
   for (const agent of blocked) {
-    console.log(`  ${yellow("blocked")} ${agent.name}${agent.statusNote ? dim(` — ${agent.statusNote}`) : ""}`);
+    console.log(`  ${yellow("blocked")} ${safe(agent.name)}${agent.statusNote ? dim(` — ${safe(agent.statusNote)}`) : ""}`);
   }
 }
 
@@ -326,9 +329,9 @@ function roles(args: Args): void {
     console.log(`  ${bold("morse roles new backend")}\n`);
   } else {
     for (const entry of found) {
-      console.log(`${bold(entry.name.padEnd(16))} ${entry.role ?? ""}`);
-      if (entry.description) console.log(`  ${wrapText(entry.description, 76, "  ")}`);
-      if (entry.skills.length) console.log(`  ${dim(entry.skills.join(" · "))}`);
+      console.log(`${bold(safe(entry.name).padEnd(16))} ${safe(entry.role ?? "")}`);
+      if (entry.description) console.log(`  ${wrapText(safe(entry.description), 76, "  ")}`);
+      if (entry.skills.length) console.log(`  ${dim(safe(entry.skills.join(" · ")))}`);
       console.log(`  ${dim(entry.source)}\n`);
     }
   }
@@ -340,6 +343,12 @@ function roles(args: Args): void {
 function newRole(name: string | undefined): void {
   if (!name) {
     console.error("Usage: morse roles new <name>");
+    process.exitCode = 1;
+    return;
+  }
+  if (!isValidRoleName(name)) {
+    // The name becomes a filename; refuse anything that could become a path.
+    console.error(`Invalid role name '${name}'. Use letters, digits, dot, dash or underscore.`);
     process.exitCode = 1;
     return;
   }
@@ -455,11 +464,51 @@ function init(room: string): void {
   console.log(`  ${bold("morse join backend")}\n`);
 }
 
-function reset(room: string): void {
+/**
+ * Deleting a room is not recoverable, and the room is resolved from the current
+ * directory — so a reset run from the wrong place, or with a mistyped --room,
+ * silently destroys a different room's history than the one intended. Show what
+ * is about to go, and require --force when there is no terminal to confirm at.
+ */
+async function reset(args: Args, room: string): Promise<void> {
   const store = new Store();
   const agents = store.roster(room);
+  const messages = store.maxMessageId(room);
+
+  if (agents.length === 0 && messages === 0) {
+    console.log(`Room ${cyan(room)} is already empty.`);
+    return;
+  }
+
+  console.log(`This deletes ${bold(String(agents.length))} agents and all messages in room ${cyan(room)}.`);
+  for (const agent of agents) console.log(`  ${safe(agent.name)} ${dim(`(${agent.status})`)}`);
+
+  if (!args.flags.force) {
+    const confirmed = await confirm(`Delete room '${room}'? This cannot be undone. [y/N] `);
+    if (!confirmed) {
+      console.log("Cancelled.");
+      return;
+    }
+  }
+
   store.clearRoom(room);
-  console.log(`Cleared room ${cyan(room)} (${agents.length} agents, messages deleted).`);
+  console.log(`Cleared room ${cyan(room)}.`);
+}
+
+/** Reads a single line; declines rather than assuming yes when not a terminal. */
+async function confirm(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY) {
+    console.error("Not a terminal. Re-run with --force to confirm.");
+    return false;
+  }
+  const readline = await import("node:readline/promises");
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await rl.question(question);
+    return /^y(es)?$/i.test(answer.trim());
+  } finally {
+    rl.close();
+  }
 }
 
 // -------------------------------------------------------------------- util
