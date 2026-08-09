@@ -1,6 +1,6 @@
 {
   "name": "morse-ai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A simplistic agent-to-agent communication platform for solo builders.",
   "keywords": [
     "mcp",
