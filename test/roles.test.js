@@ -150,3 +150,13 @@ test("each harness gets the launch flags it actually understands", async () => {
   assert.ok(codex.some((a) => a.includes('MORSE_AGENT="backend"')));
   assert.match(codex.at(-1), /PROTOCOL[\s\S]*GO/);
 });
+
+test("the reported version is the published one", async () => {
+  // A hardcoded literal here silently drifts on every release, leaving
+  // `morse --version` and the MCP handshake advertising a version that was
+  // never published.
+  const { VERSION } = await import("../dist/index.js");
+  const { createRequire } = await import("node:module");
+  const pkg = createRequire(import.meta.url)("../package.json");
+  assert.equal(VERSION, pkg.version);
+});
