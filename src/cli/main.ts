@@ -7,12 +7,16 @@ import { buildPrompt } from "../prompt.js";
 import { resolveRoom, sanitizeRoom } from "../room.js";
 import { pluginsEnabled } from "../plugins.js";
 import {
+  collectRoles,
+  findRole,
   isValidRoleName,
   listRoles,
   loadRole,
+  roleSearchOverrides,
   roleSearchPaths,
   roleSearchReport,
   roleTemplate,
+  type RoleRejection,
 } from "../roles.js";
 import { BROADCAST, Store, normalizeRecipients } from "../store.js";
 import { VERSION } from "../version.js";
@@ -137,7 +141,13 @@ async function join_(args: Args, room: string): Promise<void> {
 
   // A role is optional. Without one the agent still joins and coordinates; it
   // just describes itself instead of being handed a description.
-  const role = loadRole(name);
+  const found = findRole(name);
+  const role = found.role;
+  // But "no role" and "a role we refused to load" are different situations, and
+  // this is the moment the difference matters: the user has named a role and is
+  // about to get an agent without one. Silence here is indistinguishable from a
+  // typo, and the user cannot debug a directory they did not create.
+  reportRejections(found.rejected);
   const cliPath = fileURLToPath(new URL("../cli.js", import.meta.url));
   const serverEnv: Record<string, string> = {
     MORSE_AGENT: name,
@@ -341,10 +351,18 @@ function rooms(): void {
  * shadows a shared one, or when a definition someone wrote for another tool
  * turns up here.
  */
+/** One line per candidate morse found and would not load, and why. */
+function reportRejections(rejected: RoleRejection[], write = console.log): void {
+  for (const entry of rejected) {
+    const from = entry.plugin ? `${yellow(safe(entry.plugin))} ` : "";
+    write(`${yellow("skipped")} ${from}${dim(entry.path)} — ${safe(entry.reason)}`);
+  }
+}
+
 function roles(args: Args): void {
   if (args.positional[0] === "new") return newRole(args.positional[1]);
 
-  const found = listRoles();
+  const { roles: found, rejected } = collectRoles();
   if (found.length === 0) {
     console.log("No role definitions found.\n");
     console.log("Morse does not ship roles — an agent works fine without one, and describes");
@@ -360,6 +378,21 @@ function roles(args: Args): void {
       const origin = entry.plugin ? `${yellow(safe(entry.plugin))} ${dim(entry.source)}` : dim(entry.source);
       console.log(`  ${origin}\n`);
     }
+  }
+
+  if (rejected.length) {
+    console.log(dim("Found but not loaded:"));
+    reportRejections(rejected);
+    console.log("");
+  }
+
+  // A manifest in this repository redefined a built-in ecosystem. Legitimate,
+  // and the reason project manifests exist — but it changes where morse looks
+  // for someone else's agent folders, and it may have arrived with a clone.
+  for (const override of roleSearchOverrides()) {
+    console.log(
+      `${yellow("note")} ${safe(override.path)} redefines the built-in ${bold(safe(override.id))} plugin\n`,
+    );
   }
 
   console.log(dim("Looked up in order:"));
@@ -412,7 +445,19 @@ function prompt(args: Args, room: string): void {
     process.exitCode = 1;
     return;
   }
-  console.log(buildPrompt({ name, room, role: loadRole(name) }));
+  // Same lookup `morse join` does, so the same refusals have to surface here —
+  // this is the command someone runs to find out what their agent will be told.
+  // Rejections go to stderr, never stdout: this output gets piped into a
+  // harness, and a warning mixed into it would become part of a system prompt.
+  const found = findRole(name);
+  reportRejections(found.rejected, console.error);
+  // Asked for by name, found, and refused, with nothing to fall back on — the
+  // request failed even though a usable role-less prompt still prints. Exiting
+  // zero here is what makes the failure invisible to anything but a careful
+  // reader. A rejection that was superseded by a role further up the ladder is
+  // worth mentioning but is not a failure.
+  if (found.rejected.length && !found.role) process.exitCode = 1;
+  console.log(buildPrompt({ name, room, role: found.role }));
 }
 
 // ------------------------------------------------------------ participation
@@ -552,6 +597,13 @@ async function confirm(question: string): Promise<boolean> {
 
 // -------------------------------------------------------------------- util
 
+/**
+ * Flags that never take a value. Without this, `morse join --no-plugins backend`
+ * parses the agent name as the flag's argument and then reports that no agent
+ * was given — the option and the positional cannot both survive otherwise.
+ */
+const BOOLEAN_FLAGS = new Set(["no-plugins", "force", "help", "version", "follow"]);
+
 function parseArgs(argv: string[]): Args {
   const flags: Record<string, string | boolean> = {};
   const positional: string[] = [];
@@ -571,7 +623,7 @@ function parseArgs(argv: string[]): Args {
     if (token.startsWith("--")) {
       const key = token.slice(2);
       const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith("-")) {
+      if (next !== undefined && !next.startsWith("-") && !BOOLEAN_FLAGS.has(key)) {
         flags[key] = next;
         i++;
       } else {

@@ -172,6 +172,7 @@ You have probably written these definitions once already. Morse reads the agent 
 
 ```
 .claude/agents/backend.md        →  morse join backend
+.codex/agents/backend.toml       →  morse join backend
 ```
 
 Each rung of the ladder above is widened with those folders, and `.morse/roles` still wins at the same rung — writing the morse file is how you say "I mean this one". `$MORSE_ROLES` is not widened; packs stay morse-shaped.
@@ -179,9 +180,14 @@ Each rung of the ladder above is widened with those folders, and `.morse/roles` 
 | Plugin | Project | Personal | Layout |
 | --- | --- | --- | --- |
 | `claude` | `.claude/agents` | `~/.claude/agents` | `<name>.md` |
-| `pi` | `.pi/agent/agents`, `.pi/agents` | same, under `~` | `<pack>/<name>.md` |
+| `codex` | `.codex/agents` | `~/.codex/agents` | `<name>.toml` |
+| `pi` | `.pi/agent/agents`, `.pi/agents` | `~/.pi/agent/agents` | `<pack>/<name>.md` |
 
-Only `name` and `description` are borrowed. A `tools:` list is a tool allowlist, not a capability blurb, so it is **not** mapped onto morse `skills` — agents pick teammates by reading skills, and a borrowed role arriving with none is honest. There is no `codex` plugin in this release.
+pi's project-local convention is unconfirmed, so both plausible directories are searched; a directory that is not there is the normal case, not an error.
+
+Only `name` and `description` are borrowed, plus Codex's `developer_instructions` as the guidance body. A `tools:` list, a `sandbox_mode` or a `model` is a permission, not a capability blurb, so none of them are mapped onto morse `skills` — agents pick teammates by reading skills, and a borrowed role arriving with none is honest.
+
+Codex files are TOML, which morse reads with a deliberately small reader: `key = "value"`, `key = """multi-line"""`, and comments. Anything else — tables, dotted keys, arrays, `'''` literals — **refuses the whole file** rather than guessing. A prompt body silently truncated at the first `"""` is worse than no role at all, because nothing looks wrong.
 
 Teaching morse a fourth ecosystem is a JSON file, not a patch. Drop it in `.morse/plugins/` (or `~/.morse/plugins/`):
 
@@ -189,7 +195,9 @@ Teaching morse a fourth ecosystem is a JSON file, not a patch. Drop it in `.mors
 { "id": "acme", "project": [".acme/agents"], "depth": 0, "map": { "description": "summary" } }
 ```
 
-A plugin is a manifest, never code — morse reads config files, it does not run them. Reusing an `id` replaces that plugin, which is how you correct a built-in without waiting for a release.
+A plugin is a manifest, never code — morse reads config files, it does not run them. Reusing an `id` replaces that plugin, which is how you correct a built-in without waiting for a release; when a manifest inside the project does that, `morse roles` says so, because it may have arrived with a clone.
+
+Nothing is dropped in silence. A file that is found and not loaded — outside the directory searched, unreadable, or refused by the reader — is reported with the reason, by `morse roles` and by `morse join`/`morse prompt` when you asked for it by name. "Morse didn't find my agents" should never be a mystery you cannot investigate.
 
 `morse roles` labels every borrowed definition with the plugin that supplied it and lists every directory searched, including the ones that were absent. To turn discovery off and get pre-plugin behaviour exactly, pass `--no-plugins` or set `MORSE_PLUGINS=off`.
 

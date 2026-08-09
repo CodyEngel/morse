@@ -34,21 +34,25 @@ export interface PluginManifest {
   /** Which files are agent definitions. */
   extensions?: string[];
   /**
-   * How the file is read. Only `frontmatter` is implemented — the field exists
-   * so that an ecosystem storing agents in another format (Codex writes TOML)
-   * is a new manifest and a new reader, not a change to discovery itself.
+   * How the file is read. Discovery does not care: adding an ecosystem that
+   * stores agents in some other format is a manifest and a reader, not a change
+   * to the search itself.
    */
-  format?: "frontmatter";
+  format?: "frontmatter" | "toml";
   /**
    * Which key in that ecosystem's frontmatter supplies each morse field.
    * Anything left out is absent rather than guessed.
    *
-   * Note what is deliberately missing: `skills`. Claude and pi both carry a
-   * `tools:` list, but that is a tool allowlist, not a capability blurb — and
-   * agents route work by reading skills off the roster. A borrowed role arrives
-   * with no skills, which is honest; `role` and `description` carry the signal.
+   * Note what is deliberately missing from every built-in: `skills`. Claude and
+   * pi carry a `tools:` list and Codex carries sandbox and model settings, but
+   * those are permissions, not capability blurbs — and agents route work by
+   * reading skills off the roster. A borrowed role arrives with no skills,
+   * which is honest; `role` and `description` carry the signal.
+   *
+   * `brief` is only consulted for formats with no document body of their own.
+   * A markdown file's body is its brief.
    */
-  map?: Partial<Record<"name" | "role" | "description" | "skills", string>>;
+  map?: Partial<Record<"name" | "role" | "description" | "skills" | "brief", string>>;
 }
 
 /** A directory a plugin contributed, and the plugin that contributed it. */
@@ -57,6 +61,7 @@ export interface PluginDir {
   dir: string;
   depth: number;
   extensions: string[];
+  format: NonNullable<PluginManifest["format"]>;
   map: NonNullable<PluginManifest["map"]>;
 }
 
@@ -75,25 +80,47 @@ const CLAUDE: PluginManifest = {
 };
 
 /**
+ * Codex keeps agents as flat TOML rather than markdown, which is the whole
+ * reason `format` exists: the seam between "where morse looks" and "how a file
+ * is read" has to be real, or a plugin system is a `.claude` importer with
+ * ceremony.
+ *
+ * `developer_instructions` is the prompt body, so it maps onto `brief`. Nothing
+ * maps onto `skills` — `model`, `sandbox_mode` and the rest describe what the
+ * agent is allowed to do, not what it is good at.
+ */
+const CODEX: PluginManifest = {
+  id: "codex",
+  project: [join(".codex", "agents")],
+  personal: [join(".codex", "agents")],
+  extensions: [".toml"],
+  format: "toml",
+  map: { name: "name", description: "description", brief: "developer_instructions" },
+};
+
+/**
  * pi namespaces agents by pack — `agents/<pack>/<name>.md` — so it needs one
  * level of nesting. Two packs may both define `architect`; that collision is
  * resolved the same way every other one is, first match wins, and `morse roles`
  * prints the source path so the shadowed copy is diagnosable.
  *
- * Both roots are listed because pi's live layout is unconfirmed: a missing
- * directory is the normal case, so searching both costs nothing and guessing
- * wrong costs a silently undiscovered agent.
+ * The personal root is `~/.pi/agent/agents`: `~/.pi/agent` is the config root,
+ * the directory holding `settings.json`. pi's *project-local* convention is
+ * unconfirmed, so both plausible roots are searched there and that is a hedge
+ * rather than a finding — a missing directory is the normal case, so searching
+ * one that turns out not to exist costs nothing, and guessing wrong would cost
+ * a silently undiscovered agent.
  */
 const PI: PluginManifest = {
   id: "pi",
   project: [join(".pi", "agent", "agents"), join(".pi", "agents")],
-  personal: [join(".pi", "agent", "agents"), join(".pi", "agents")],
+  personal: [join(".pi", "agent", "agents")],
   depth: 1,
   map: { name: "name", description: "description" },
 };
 
 /** Ordered, so precedence between plugins is documented rather than emergent. */
-export const BUILTIN_PLUGINS: PluginManifest[] = [CLAUDE, PI];
+export const BUILTIN_PLUGINS: PluginManifest[] = [CLAUDE, CODEX, PI];
 
 /**
  * Discovery is opt-out because it changes where an agent's instructions can
@@ -111,16 +138,30 @@ export function pluginsEnabled(env = process.env): boolean {
  * under `$MORSE_HOME`. They are data files, loaded with `JSON.parse` — there is
  * no path here that executes anything.
  */
-export function loadPlugins(roots: { project: string[]; morseHome: string }): PluginManifest[] {
+/** A built-in that a manifest inside a project redefined, and the file that did it. */
+export interface PluginOverride {
+  id: string;
+  path: string;
+}
+
+export function loadPlugins(roots: { project: string[]; morseHome: string }): {
+  plugins: PluginManifest[];
+  overrides: PluginOverride[];
+} {
   const dirs = [
-    ...roots.project.map((root) => join(root, ".morse", "plugins")),
-    join(roots.morseHome, "plugins"),
+    ...roots.project.map((root) => ({ dir: join(root, ".morse", "plugins"), project: true })),
+    { dir: join(roots.morseHome, "plugins"), project: false },
   ];
 
+  const builtin = new Set(BUILTIN_PLUGINS.map((plugin) => plugin.id));
   const found = new Map<string, PluginManifest>();
   for (const plugin of BUILTIN_PLUGINS) found.set(plugin.id, plugin);
+  const overrides: PluginOverride[] = [];
+  const seen = new Set<string>();
 
-  for (const dir of [...new Set(dirs)]) {
+  for (const { dir, project } of dirs) {
+    if (seen.has(dir)) continue;
+    seen.add(dir);
     let entries: string[];
     try {
       entries = readdirSync(dir);
@@ -129,14 +170,21 @@ export function loadPlugins(roots: { project: string[]; morseHome: string }): Pl
     }
     for (const entry of entries.sort()) {
       if (!entry.endsWith(".json")) continue;
-      const manifest = readManifest(join(dir, entry));
-      // A user manifest may replace a built-in — that is how someone corrects
-      // morse's idea of an ecosystem without waiting for a release.
-      if (manifest) found.set(manifest.id, manifest);
+      const path = join(dir, entry);
+      const manifest = readManifest(path);
+      if (!manifest) continue;
+      // A manifest may replace a built-in — that is how someone corrects
+      // morse's idea of an ecosystem without waiting for a release. In your
+      // home directory that is simply your configuration. In a project it
+      // arrived with the repository, and quietly changing what `claude` means
+      // is the same surprise provenance exists to prevent — so it is disclosed,
+      // not refused.
+      if (project && builtin.has(manifest.id)) overrides.push({ id: manifest.id, path });
+      found.set(manifest.id, manifest);
     }
   }
 
-  return [...found.values()];
+  return { plugins: [...found.values()], overrides };
 }
 
 /** A manifest that does not parse is skipped: one bad file is not fatal. */
@@ -144,7 +192,7 @@ function readManifest(path: string): PluginManifest | undefined {
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as PluginManifest;
     if (!parsed || typeof parsed.id !== "string" || !/^[a-z0-9][a-z0-9._-]*$/.test(parsed.id)) return undefined;
-    if (parsed.format && parsed.format !== "frontmatter") return undefined;
+    if (parsed.format && parsed.format !== "frontmatter" && parsed.format !== "toml") return undefined;
     const dirs = [...(parsed.project ?? []), ...(parsed.personal ?? [])];
     // A manifest directory is joined onto a search root, so it must not be able
     // to climb out of one. Same rule a role name obeys, applied a level up.
@@ -173,6 +221,7 @@ export function pluginDirs(
         dir: join(root, relative),
         depth: plugin.depth ?? 0,
         extensions: plugin.extensions ?? DEFAULT_EXTENSIONS,
+        format: plugin.format ?? "frontmatter",
         map: plugin.map ?? {},
       });
     }

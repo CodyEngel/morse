@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 const { parseRole, loadRole, listRoles, roleSearchPaths } = await import("../dist/index.js");
 
 const tmp = mkdtempSync(join(tmpdir(), "morse-roles-"));
+// Discovery reads the home directory now, so a maintainer with their own
+// ~/.claude/agents would see extra definitions here and fail the count below.
+process.env.HOME = join(tmp, "no-such-user");
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
 function writeRole(dir, name, contents) {

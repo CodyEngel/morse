@@ -56,7 +56,7 @@ The body of a `.morse/roles/*.md` file is appended to an agent's system prompt. 
 
 ### Morse reads files you wrote for other tools
 
-Morse also discovers agent definitions in the folders other harnesses keep — `.claude/agents`, `.pi/agent/agents` — and the body of one of those files becomes a system prompt exactly as a morse role does. Two consequences worth stating plainly:
+Morse also discovers agent definitions in the folders other harnesses keep — `.claude/agents`, `.codex/agents`, `.pi/agent/agents` — and the body of one of those files (Codex's `developer_instructions`) becomes a system prompt exactly as a morse role does. Two consequences worth stating plainly:
 
 - **A file you wrote for another tool can now instruct a morse agent.** Cloning a repository with a `.claude/agents/` directory is enough; nothing needs copying into `.morse/roles`. Review those directories on the same terms as a role file.
 - **The blast radius is a superset of what it was.** More directories are read, and they are directories morse does not define the contents of.
@@ -66,7 +66,9 @@ Against that, discovery is deliberately narrow:
 - **Plugins are manifests, not code.** A plugin is a JSON file describing directories and field names. Morse reads config files; it never loads or executes plugin code, so adding an ecosystem cannot itself run anything.
 - **Only agent definitions are read.** Not settings, not credentials, not MCP configuration. Morse looks in one named subdirectory per ecosystem and reads nothing else.
 - **Paths are contained at every level.** A role name cannot become a path, a manifest directory cannot climb out of its search root, and a file is refused if its resolved location is outside the directory being searched. That last one matters: git preserves symlinks, so `.morse/roles/backend.md` committed as a link to `~/.ssh/id_rsa` would otherwise put a private key into a system prompt on `morse join`.
-- **Provenance is always visible.** `morse roles` labels each definition with the plugin that supplied it and lists every directory searched; `morse join` names the file and the plugin.
+- **Provenance is always visible.** `morse roles` labels each definition with the plugin that supplied it and lists every directory searched; `morse join` names the file and the plugin. A manifest inside a project that redefines a built-in ecosystem is disclosed, since it may have arrived with a clone.
+- **Nothing is refused in silence.** A file found and then dropped is reported with the reason — outside the directory searched, unreadable, unparseable. Silent under-discovery and a working feature look identical from outside, which is what makes it dangerous: a user who cannot tell a typo from a rejected file cannot audit what their agents are being told.
+- **The TOML reader refuses rather than guesses.** It reads `key = "value"`, `key = """multi-line"""` and comments; anything else refuses the whole file. A prompt body truncated at a delimiter the reader did not understand would be a silently wrong system prompt, which is worse than no role.
 - **It can be turned off.** `--no-plugins`, or `MORSE_PLUGINS=off`, restores the earlier behaviour exactly: only `.morse/roles` is read.
 
 ### Messages are untrusted text

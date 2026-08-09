@@ -6,6 +6,11 @@ export {
   loadRole,
   listRoles,
   parseRole,
+  parseTomlRole,
+  collectRoles,
+  findRole,
+  type RoleRejection,
+  type RoleSearch,
   roleSearchPaths,
   roleSearchDirs,
   roleSearchReport,
@@ -24,6 +29,7 @@ export {
   type PluginDir,
   type PluginManifest,
 } from "./plugins.js";
+export { parseToml, tomlString, type TomlValue } from "./toml.js";
 export { buildPrompt, type PromptOptions } from "./prompt.js";
 export {
   Store,

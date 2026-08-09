@@ -1,7 +1,9 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 // Every ambient root the ladder can reach is pinned somewhere that does not
@@ -187,6 +189,24 @@ test("every documented spelling of off turns discovery off", () => {
       delete process.env.MORSE_PLUGINS;
     }
   }
+});
+
+test("--no-plugins does not swallow the argument after it", () => {
+  // The CLI's argument parser gives any long flag the next non-dash token as
+  // its value. --no-plugins is the first boolean long flag that can precede a
+  // positional, so `morse join --no-plugins backend` would otherwise parse the
+  // agent name as the flag's value and report that no agent was given.
+  const root = project("flag-order");
+  const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+  const run = (...argv) =>
+    execFileSync(process.execPath, [cli, ...argv], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, MORSE_HOME: join(tmp, "no-such-home"), HOME: join(tmp, "no-such-user") },
+    });
+
+  assert.match(run("prompt", "--no-plugins", "backend"), /\*\*backend\*\*/, "the positional survives");
+  assert.match(run("prompt", "backend", "--no-plugins"), /\*\*backend\*\*/, "and order does not matter");
 });
 
 // ------------------------------------------- AC5: a fourth ecosystem is a file

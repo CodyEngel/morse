@@ -1,15 +1,17 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import {
   type PluginManifest,
+  type PluginOverride,
   dirExists,
   expandDepth,
   loadPlugins,
   pluginDirs,
   pluginsEnabled,
 } from "./plugins.js";
+import { parseToml, tomlString } from "./toml.js";
 
 /**
  * Morse ships no roles. It defines the shape of one and where to find them.
@@ -82,6 +84,7 @@ export interface SearchDir {
   /** Nested levels below `dir` to descend. */
   depth: number;
   extensions: string[];
+  format: "frontmatter" | "toml";
   /** Which frontmatter keys supply which fields; morse's own when absent. */
   map?: FieldMap;
 }
@@ -102,13 +105,18 @@ const MORSE_EXTENSIONS = [".md", ".markdown"];
  * would be surprising in a way the project and home rungs are not.
  */
 export function roleSearchDirs(cwd = process.cwd()): SearchDir[] {
-  const morse = (dir: string): SearchDir => ({ dir, depth: 0, extensions: MORSE_EXTENSIONS });
+  const morse = (dir: string): SearchDir => ({
+    dir,
+    depth: 0,
+    extensions: MORSE_EXTENSIONS,
+    format: "frontmatter",
+  });
   const root = gitRoot(cwd);
   const projectRoots = root && root !== cwd ? [cwd, root] : [cwd];
 
   if (!pluginsEnabled()) return roleSearchPaths(cwd).map(morse);
 
-  const plugins = loadPlugins({
+  const { plugins } = loadPlugins({
     project: projectRoots,
     morseHome: process.env.MORSE_HOME ?? join(homedir(), ".morse"),
   });
@@ -140,8 +148,19 @@ function borrowed(plugins: PluginManifest[], root: string, scope: "project" | "p
     plugin: entry.plugin,
     depth: entry.depth,
     extensions: entry.extensions,
+    format: entry.format,
     map: entry.map,
   }));
+}
+
+/** Built-ins this project's own manifests redefined. Empty when plugins are off. */
+export function roleSearchOverrides(cwd = process.cwd()): PluginOverride[] {
+  if (!pluginsEnabled()) return [];
+  const root = gitRoot(cwd);
+  return loadPlugins({
+    project: root && root !== cwd ? [cwd, root] : [cwd],
+    morseHome: process.env.MORSE_HOME ?? join(homedir(), ".morse"),
+  }).overrides;
 }
 
 /**
@@ -168,10 +187,34 @@ export function isValidRoleName(name: string): boolean {
   return /^[a-z0-9][a-z0-9._-]*$/.test(name.trim().toLowerCase()) && !name.includes("..");
 }
 
+/**
+ * Why a file that was found did not become a role. "Morse didn't find my
+ * agents" is unfalsifiable from outside — a typo, a symlinked home directory
+ * and a TOML construct outside the subset all look identical — so a candidate
+ * that is found and dropped has to be able to say which it was.
+ */
+export interface RoleRejection {
+  path: string;
+  plugin?: string;
+  reason: "outside the searched directory" | "unreadable" | "unparseable";
+}
+
+export interface RoleSearch {
+  role?: RoleDefinition;
+  /** Candidates matching the requested name that were found and refused. */
+  rejected: RoleRejection[];
+}
+
 /** First match wins, so a nearer definition shadows a shared one. */
 export function loadRole(name: string, cwd = process.cwd()): RoleDefinition | undefined {
+  return findRole(name, cwd).role;
+}
+
+/** `loadRole` plus the candidates it refused, for callers that report them. */
+export function findRole(name: string, cwd = process.cwd()): RoleSearch {
   const wanted = name.trim().toLowerCase();
-  if (!isValidRoleName(wanted)) return undefined;
+  const rejected: RoleRejection[] = [];
+  if (!isValidRoleName(wanted)) return { rejected };
 
   for (const entry of roleSearchDirs(cwd)) {
     for (const dir of expandDepth(entry.dir, entry.depth)) {
@@ -180,14 +223,22 @@ export function loadRole(name: string, cwd = process.cwd()): RoleDefinition | un
         // Belt and braces: even with a validated name, never read outside the
         // directory we meant to search.
         if (!isInside(dir, path)) continue;
-        if (!contained(dir, path)) continue;
-        const text = read(path);
-        if (text === undefined) continue;
-        return parseRole(text, path, { map: entry.map, plugin: entry.plugin });
+        const candidate = inspect(dir, path);
+        if (!candidate) continue;
+        if ("reason" in candidate) {
+          rejected.push({ path, plugin: entry.plugin, reason: candidate.reason });
+          continue;
+        }
+        const role = parseDefinition(candidate.text, path, entry);
+        if (!role) {
+          rejected.push({ path, plugin: entry.plugin, reason: "unparseable" });
+          continue;
+        }
+        return { role, rejected };
       }
     }
   }
-  return undefined;
+  return { rejected };
 }
 
 export function isInside(dir: string, path: string): boolean {
@@ -208,26 +259,53 @@ export function isInside(dir: string, path: string): boolean {
  * keeps working. Only leaving the directory is refused. A link that resolves
  * nowhere is simply absent — the same as any other missing file.
  */
-function contained(dir: string, path: string): boolean {
+/**
+ * Look at one candidate: its text, the reason it was refused, or nothing at all
+ * if there is no such directory entry.
+ *
+ * Existence and containment are the same operation on purpose. `realpathSync`
+ * throws for a missing file and for a dangling symlink alike, so one `try`
+ * covers both and there is no window between an `existsSync` and a read. Both
+ * ends are resolved or neither: on macOS `/var` is a symlink to `/private/var`,
+ * so resolving only the candidate rejects files that are genuinely inside the
+ * directory searched — and that failure is silent under-discovery, on one
+ * platform, which is the worst shape a bug here can take.
+ */
+function inspect(dir: string, path: string): { text: string } | { reason: RoleRejection["reason"] } | undefined {
   try {
-    return isInside(realpathSync(dir), realpathSync(path));
+    lstatSync(path);
   } catch {
-    return false;
+    return undefined; // Nothing of that name; not a rejection, just absence.
   }
-}
-
-/** A file that cannot be read is skipped: one bad entry is not fatal. */
-function read(path: string): string | undefined {
+  let real: string;
   try {
-    if (!statSync(path).isFile()) return undefined;
-    return readFileSync(path, "utf8");
+    real = realpathSync(path);
   } catch {
-    return undefined;
+    // The entry is there but resolves nowhere: a dangling symlink. Missing as
+    // far as loading goes, but the user asked for it, so say so.
+    return { reason: "unreadable" };
+  }
+  try {
+    if (!isInside(realpathSync(dir), real)) return { reason: "outside the searched directory" };
+    // A directory named `backend.md` is offered by readdir and fails on read.
+    // It occupies the name the user asked for, so it is a refusal to report,
+    // not an absence to stay quiet about.
+    if (!statSync(real).isFile()) return { reason: "unreadable" };
+    return { text: readFileSync(real, "utf8") };
+  } catch {
+    return { reason: "unreadable" };
   }
 }
 
 export function listRoles(cwd = process.cwd()): RoleDefinition[] {
+  return collectRoles(cwd).roles;
+}
+
+/** `listRoles` plus everything found and refused, so `morse roles` can say so. */
+export function collectRoles(cwd = process.cwd()): { roles: RoleDefinition[]; rejected: RoleRejection[] } {
   const seen = new Map<string, RoleDefinition>();
+  const rejected: RoleRejection[] = [];
+
   for (const entry of roleSearchDirs(cwd)) {
     const pattern = new RegExp(`(${entry.extensions.map(escapeExtension).join("|")})$`, "i");
     for (const dir of expandDepth(entry.dir, entry.depth)) {
@@ -240,26 +318,63 @@ export function listRoles(cwd = process.cwd()): RoleDefinition[] {
       for (const file of entries.sort()) {
         if (!pattern.test(file)) continue;
         const path = join(dir, file);
-        // Anything unreadable, escaped, or not a file at all is skipped. A
-        // plugin points morse at directories it does not control, so a single
-        // odd entry in someone's `.claude/agents` must not break `morse roles`.
-        if (!contained(dir, path)) continue;
-        const text = read(path);
-        if (text === undefined) continue;
-        const definition = parseRole(text, path, { map: entry.map, plugin: entry.plugin });
+        // A plugin points morse at directories it does not control, so a single
+        // odd entry in someone's `.claude/agents` must not break `morse roles`
+        // — but it must not vanish without explanation either.
+        const candidate = inspect(dir, path);
+        if (!candidate) continue;
+        if ("reason" in candidate) {
+          rejected.push({ path, plugin: entry.plugin, reason: candidate.reason });
+          continue;
+        }
+        const definition = parseDefinition(candidate.text, path, entry);
+        if (!definition) {
+          rejected.push({ path, plugin: entry.plugin, reason: "unparseable" });
+          continue;
+        }
         if (!seen.has(definition.name)) seen.set(definition.name, definition);
       }
     }
   }
-  return [...seen.values()];
+  return { roles: [...seen.values()], rejected };
+}
+
+/**
+ * Read one file according to its plugin's format. `undefined` means the file
+ * was refused — never a partial result, because a role with a quietly truncated
+ * brief is worse than no role at all: the user cannot see that anything is
+ * wrong, and the truncation is in a system prompt.
+ */
+function parseDefinition(text: string, source: string, entry: SearchDir): RoleDefinition | undefined {
+  if (entry.format === "toml") {
+    return parseTomlRole(text, source, { map: entry.map ?? {}, plugin: entry.plugin });
+  }
+  return parseRole(text, source, { map: entry.map, plugin: entry.plugin });
+}
+
+/** Codex-shaped: no document body, so the brief is a mapped field. */
+export function parseTomlRole(text: string, source: string, options: ParseOptions = {}): RoleDefinition | undefined {
+  const fields = parseToml(text);
+  if (!fields) return undefined;
+  const map = options.map ?? {};
+  const brief = tomlString(fields, map.brief)?.trim();
+  return {
+    name: (tomlString(fields, map.name) ?? basename(source).replace(/\.[^.]+$/, "")).toLowerCase(),
+    role: asString(tomlString(fields, map.role)),
+    description: asString(tomlString(fields, map.description)),
+    skills: asList(tomlString(fields, map.skills)),
+    brief: brief || undefined,
+    source,
+    ...(options.plugin ? { plugin: options.plugin } : {}),
+  };
 }
 
 function escapeExtension(extension: string): string {
   return extension.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Which frontmatter key supplies each field. Absent keys stay absent. */
-export type FieldMap = Partial<Record<"name" | "role" | "description" | "skills", string>>;
+/** Which key in the source format supplies each field. Absent keys stay absent. */
+export type FieldMap = Partial<Record<"name" | "role" | "description" | "skills" | "brief", string>>;
 
 const MORSE_FIELDS: FieldMap = { name: "name", role: "role", description: "description", skills: "skills" };
 
