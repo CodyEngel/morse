@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-const CLI = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
+const CLI = fileURLToPath(new URL("../../packages/morse-ai/dist/cli.js", import.meta.url));
 
 /** Minimal MCP stdio client — enough to drive the server the way a harness does. */
 export class McpClient {

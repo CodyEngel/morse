@@ -6,14 +6,14 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
-const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+const CLI = fileURLToPath(new URL("../packages/morse-ai/dist/cli.js", import.meta.url));
 const tmp = realpathSync(mkdtempSync(join(tmpdir(), "morse-codex-")));
 process.env.MORSE_DB = join(tmp, "codex.db");
 process.env.MORSE_ROLES = join(tmp, "no-such-pack");
 process.env.MORSE_HOME = join(tmp, "no-such-home");
 process.env.HOME = join(tmp, "no-such-user");
 
-const { loadRole, listRoles, resetDb } = await import("../dist/index.js");
+const { loadRole, listRoles, resetDb } = await import("../packages/morse-ai/dist/index.js");
 
 after(() => {
   resetDb();

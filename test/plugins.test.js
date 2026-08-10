@@ -18,7 +18,7 @@ process.env.HOME = join(tmp, "no-such-user");
 delete process.env.MORSE_PLUGINS;
 
 const { loadRole, listRoles, roleSearchDirs, roleSearchPaths, roleSearchReport } = await import(
-  "../dist/index.js"
+  "../packages/morse-ai/dist/index.js"
 );
 
 after(() => rmSync(tmp, { recursive: true, force: true }));
@@ -197,7 +197,7 @@ test("--no-plugins does not swallow the argument after it", () => {
   // positional, so `morse join --no-plugins backend` would otherwise parse the
   // agent name as the flag's value and report that no agent was given.
   const root = project("flag-order");
-  const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+  const cli = fileURLToPath(new URL("../packages/morse-ai/dist/cli.js", import.meta.url));
   const run = (...argv) =>
     execFileSync(process.execPath, [cli, ...argv], {
       cwd: root,

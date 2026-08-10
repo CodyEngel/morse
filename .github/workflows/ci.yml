@@ -22,7 +22,11 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci
-      - run: npx tsc --noEmit
+      # `--build`, not `--noEmit`. The root tsconfig is a solution file with
+      # `files: []`, so `tsc --noEmit` has no inputs of its own and exits 0
+      # without typechecking a single line — green, and measuring nothing.
+      # `--force` stops a stale .tsbuildinfo from skipping the work.
+      - run: npx tsc --build --force
       - run: npm test
 
   package:
@@ -65,13 +69,21 @@ jobs:
 
       # Guards the promise that installing morse does not install six opinions
       # about what a product owner is.
-      - name: Verify no roles ship in the package
+      #
+      # Runs per workspace rather than at the root: the root manifest is private
+      # and `npm pack` refuses it outright, so a root-level check would fail for
+      # a reason that has nothing to do with what it is guarding.
+      - name: Verify no roles ship in any package
         run: |
-          npm pack --dry-run --json > /tmp/pack.json
-          if grep -qiE '"path": *"(examples|test)/' /tmp/pack.json; then
-            echo "examples/ or test/ leaked into the package"; exit 1
-          fi
           npm run build
-          if grep -rqiE 'Product Owner|SecOps|threat-modelling' dist/; then
-            echo "role content leaked into dist/"; exit 1
+          for pkg in packages/*/; do
+            name=$(node -p "require('./$pkg/package.json').name")
+            echo "checking $name"
+            npm pack --dry-run --json -w "$name" > /tmp/pack.json
+            if grep -qiE '"path": *"(examples|test)/' /tmp/pack.json; then
+              echo "examples/ or test/ leaked into $name"; exit 1
+            fi
+          done
+          if grep -rqiE 'Product Owner|SecOps|threat-modelling' packages/*/dist/; then
+            echo "role content leaked into a dist/"; exit 1
           fi

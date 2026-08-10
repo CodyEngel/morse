@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "declaration": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+
+    // Project references need `composite`. It is what lets `tsc --build` know
+    // the dependency graph and rebuild only what changed — and, more to the
+    // point here, what makes the build order a declared fact rather than
+    // something npm's workspace ordering happens to get right.
+    "composite": true,
+    // So that jumping to a symbol in another package lands in its .ts source
+    // rather than the generated .d.ts.
+    "declarationMap": true
+  }
+}

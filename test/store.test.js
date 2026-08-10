@@ -7,7 +7,7 @@ import { join } from "node:path";
 const tmp = mkdtempSync(join(tmpdir(), "morse-test-"));
 process.env.MORSE_DB = join(tmp, "test.db");
 
-const { Store, resetDb, waitForInbox, waitForReply } = await import("../dist/index.js");
+const { Store, resetDb, waitForInbox, waitForReply } = await import("../packages/morse-ai/dist/index.js");
 
 const ROOM = "test-room";
 let store;

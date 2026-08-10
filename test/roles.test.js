@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const { parseRole, loadRole, listRoles, roleSearchPaths } = await import("../dist/index.js");
+const { parseRole, loadRole, listRoles, roleSearchPaths } = await import("../packages/morse-ai/dist/index.js");
 
 const tmp = mkdtempSync(join(tmpdir(), "morse-roles-"));
 // Discovery reads the home directory now, so a maintainer with their own
@@ -67,7 +67,7 @@ test("a file with no frontmatter is still a usable role", () => {
 
 test("the scaffold morse writes is parseable by morse", async () => {
   // Guards against the template drifting past what the reader supports.
-  const { roleTemplate } = await import("../dist/index.js");
+  const { roleTemplate } = await import("../packages/morse-ai/dist/index.js");
   const role = parseRole(roleTemplate("backend"), "/roles/backend.md");
   assert.equal(role.role, "Backend", "the title is derived from the name for the author to edit");
   assert.ok(role.description && role.description.length > 20, "description must survive parsing");
@@ -129,7 +129,7 @@ test("the shipped examples parse and describe distinct expertise", () => {
 });
 
 test("each harness gets the launch flags it actually understands", async () => {
-  const { buildHarnessArgs } = await import("../dist/index.js");
+  const { buildHarnessArgs } = await import("../packages/morse-ai/dist/index.js");
   const base = {
     node: "/usr/bin/node",
     cliPath: "/x/cli.js",
@@ -158,8 +158,9 @@ test("the reported version is the published one", async () => {
   // A hardcoded literal here silently drifts on every release, leaving
   // `morse --version` and the MCP handshake advertising a version that was
   // never published.
-  const { VERSION } = await import("../dist/index.js");
+  const { VERSION } = await import("../packages/morse-ai/dist/index.js");
   const { createRequire } = await import("node:module");
-  const pkg = createRequire(import.meta.url)("../package.json");
+  // The manifest that actually ships morse-ai, not the private workspace root.
+  const pkg = createRequire(import.meta.url)("../packages/morse-ai/package.json");
   assert.equal(VERSION, pkg.version);
 });

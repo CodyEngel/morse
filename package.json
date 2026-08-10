@@ -1,47 +1,19 @@
 {
-  "name": "morse-ai",
-  "version": "0.2.0",
-  "description": "A simplistic agent-to-agent communication platform for solo builders.",
-  "keywords": [
-    "mcp",
-    "agents",
-    "multi-agent",
-    "claude-code",
-    "codex",
-    "opencode"
-  ],
-  "homepage": "https://github.com/CodyEngel/morse#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/CodyEngel/morse.git"
-  },
-  "bugs": {
-    "url": "https://github.com/CodyEngel/morse/issues"
-  },
-  "author": "Cody Engel",
-  "publishConfig": {
-    "access": "public"
-  },
-  "license": "Apache-2.0",
+  "name": "morse-monorepo",
+  "private": true,
   "type": "module",
-  "bin": {
-    "morse": "dist/cli.js"
-  },
-  "main": "dist/index.js",
-  "exports": {
-    ".": "./dist/index.js"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
+  "description": "Workspace root for morse-ai and its packages. Not published.",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*"
   ],
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "tsc && node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\"",
-    "dev": "tsc --watch",
+    "build": "tsc --build && node scripts/postbuild.mjs",
+    "clean": "tsc --build --clean",
+    "dev": "tsc --build --watch",
     "test": "npm run build && node --test --no-warnings --test-timeout 90000 test/*.test.js",
     "prepare": "npm run build"
   },

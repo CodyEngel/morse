@@ -9,7 +9,7 @@ import { McpClient } from "./helpers/client.js";
 // Morse ships no roles, so the cast comes from example role files — the same
 // path a published roles package would take.
 process.env.MORSE_ROLES = fileURLToPath(new URL("../examples/roles", import.meta.url));
-const { loadRole } = await import("../dist/index.js");
+const { loadRole } = await import("../packages/morse-ai/dist/index.js");
 
 /** Turn a role file into the env `morse join` would hand the MCP server. */
 function roleEnv(name) {

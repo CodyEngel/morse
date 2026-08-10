@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
-const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+const CLI = fileURLToPath(new URL("../packages/morse-ai/dist/cli.js", import.meta.url));
 // realpath'd once at creation: on macOS /var is a symlink to /private/var, so an
 // un-resolved fixture root disagrees with the paths the implementation reports.
 const tmp = realpathSync(mkdtempSync(join(tmpdir(), "morse-rejection-")));

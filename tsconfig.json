@@ -1,17 +1,6 @@
 {
-  "compilerOptions": {
-    "target": "ES2023",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ES2023"],
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "declaration": true,
-    "sourceMap": true,
-    "skipLibCheck": true,
-    "types": ["node"]
-  },
-  "include": ["src/**/*.ts"]
+  // Solution file: no sources of its own, just the graph. `tsc --build` from
+  // the repo root walks these references in dependency order.
+  "files": [],
+  "references": [{ "path": "packages/morse-ai" }]
 }

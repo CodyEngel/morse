@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
-const CLI = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+const CLI = fileURLToPath(new URL("../packages/morse-ai/dist/cli.js", import.meta.url));
 const tmp = mkdtempSync(join(tmpdir(), "morse-optout-"));
 
 // One of the accepted off values; plugins.test.js is what pins the full set

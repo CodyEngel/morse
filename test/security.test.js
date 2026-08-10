@@ -7,8 +7,8 @@ import { join } from "node:path";
 const tmp = mkdtempSync(join(tmpdir(), "morse-sec-"));
 process.env.MORSE_DB = join(tmp, "sec.db");
 
-const { Store, resetDb, loadRole, isValidRoleName, isInside } = await import("../dist/index.js");
-const { safe, formatMessage } = await import("../dist/cli/format.js");
+const { Store, resetDb, loadRole, isValidRoleName, isInside } = await import("../packages/morse-ai/dist/index.js");
+const { safe, formatMessage } = await import("../packages/morse-ai/dist/cli/format.js");
 
 const ESC = "\x1b";
 const BEL = "\x07";

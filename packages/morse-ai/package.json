@@ -1,0 +1,47 @@
+{
+  "name": "morse-ai",
+  "version": "0.2.0",
+  "description": "A simplistic agent-to-agent communication platform for solo builders.",
+  "keywords": [
+    "mcp",
+    "agents",
+    "multi-agent",
+    "claude-code",
+    "codex",
+    "opencode"
+  ],
+  "homepage": "https://github.com/CodyEngel/morse#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CodyEngel/morse.git",
+    "directory": "packages/morse-ai"
+  },
+  "bugs": {
+    "url": "https://github.com/CodyEngel/morse/issues"
+  },
+  "author": "Cody Engel",
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "morse": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "prepare": "npm run build"
+  }
+}

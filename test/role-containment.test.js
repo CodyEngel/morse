@@ -16,7 +16,7 @@ process.env.MORSE_ROLES = join(tmp, "no-such-pack");
 process.env.MORSE_HOME = join(tmp, "no-such-home");
 process.env.HOME = join(tmp, "no-such-user");
 
-const { loadRole, listRoles, isInside, resetDb } = await import("../dist/index.js");
+const { loadRole, listRoles, isInside, resetDb } = await import("../packages/morse-ai/dist/index.js");
 
 after(() => {
   resetDb();

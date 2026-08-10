@@ -31,7 +31,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci
-      - run: npx tsc --noEmit
+      # See ci.yml: under a solution tsconfig, `--noEmit` typechecks nothing.
+      - run: npx tsc --build --force
       - run: npm test
 
   publish:
