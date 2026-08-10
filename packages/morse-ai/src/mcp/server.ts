@@ -1,5 +1,5 @@
 import { hostname } from "node:os";
-import { resolveRoom } from "../room.js";
+import { resolveRoom } from "@morse-ai/registry";
 import { BROADCAST, Store, normalizeRecipients, type AgentStatus, type Message } from "../store.js";
 import { VERSION } from "../version.js";
 import { waitForInbox, waitForReply } from "../wait.js";

@@ -1,4 +1,4 @@
-import type { RoleDefinition } from "./roles.js";
+import type { RoleDefinition } from "@morse-ai/registry/discovery";
 
 export interface PromptOptions {
   name: string;

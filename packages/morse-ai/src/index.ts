@@ -1,5 +1,7 @@
 export { openDb, dbPath, resetDb } from "./db.js";
-export { resolveRoom, sanitizeRoom } from "./room.js";
+// Re-exported rather than dropped: splitting morse into packages is not a
+// reason for anyone importing `morse-ai` to have to learn where things went.
+export { resolveRoom, sanitizeRoom } from "@morse-ai/registry";
 export {
   isValidRoleName,
   isInside,
@@ -19,8 +21,6 @@ export {
   type ParseOptions,
   type RoleDefinition,
   type SearchDir,
-} from "./roles.js";
-export {
   BUILTIN_PLUGINS,
   loadPlugins,
   pluginDirs,
@@ -28,8 +28,10 @@ export {
   expandDepth,
   type PluginDir,
   type PluginManifest,
-} from "./plugins.js";
-export { parseToml, tomlString, type TomlValue } from "./toml.js";
+  parseToml,
+  tomlString,
+  type TomlValue,
+} from "@morse-ai/registry/discovery";
 export { buildPrompt, type PromptOptions } from "./prompt.js";
 export {
   Store,

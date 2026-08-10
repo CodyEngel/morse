@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { runMcpServer } from "../mcp/server.js";
 import { buildPrompt } from "../prompt.js";
-import { resolveRoom, sanitizeRoom } from "../room.js";
-import { pluginsEnabled } from "../plugins.js";
+import { resolveRoom, sanitizeRoom } from "@morse-ai/registry";
+import { pluginsEnabled } from "@morse-ai/registry/discovery";
 import {
   collectRoles,
   findRole,
@@ -17,7 +17,7 @@ import {
   roleSearchReport,
   roleTemplate,
   type RoleRejection,
-} from "../roles.js";
+} from "@morse-ai/registry/discovery";
 import { BROADCAST, Store, normalizeRecipients } from "../store.js";
 import { VERSION } from "../version.js";
 import { waitForReply } from "../wait.js";

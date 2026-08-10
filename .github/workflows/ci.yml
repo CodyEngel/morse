@@ -87,3 +87,31 @@ jobs:
           if grep -rqiE 'Product Owner|SecOps|threat-modelling' packages/*/dist/; then
             echo "role content leaked into a dist/"; exit 1
           fi
+
+      # The two properties the package split exists to create. Neither shows up
+      # as a test failure if it decays — the code keeps working, the design just
+      # quietly stops being true — so they are asserted here instead.
+      #
+      # Pulled forward from the packaging phase on purpose: the file-backed
+      # registry lands next, and "reach for a query" is exactly the temptation
+      # it creates.
+      - name: Verify the sub-packages stayed independent
+        run: |
+          for pkg in packages/registry packages/bus; do
+            [ -d "$pkg" ] || continue
+            name=$(node -p "require('./$pkg/package.json').name")
+            deps=$(node -p "Object.keys(require('./$pkg/package.json').dependencies ?? {}).join(' ')")
+            if [ -n "$deps" ]; then
+              echo "$name must have zero dependencies, found: $deps"
+              echo "The bus talks to a registry through an interface it defines"
+              echo "itself, so neither package may depend on the other."
+              exit 1
+            fi
+          done
+
+          # Only the message log needs a database; the registry is plain files.
+          if [ -d packages/registry/dist ] && grep -rq "node:sqlite" packages/registry/dist/; then
+            echo "@morse-ai/registry loaded a database. Every agent record has"
+            echo "exactly one writer, which is the whole reason it is files."
+            exit 1
+          fi
