@@ -1,6 +1,7 @@
 import { hostname } from "node:os";
 import { resolveRoom } from "@morse-ai/registry";
-import { BROADCAST, Store, normalizeRecipients, type AgentStatus, type Message } from "../store.js";
+import { BROADCAST, Store, normalizeRecipients, type Message } from "../store.js";
+import type { AgentStatus } from "@morse-ai/registry";
 import { VERSION } from "../version.js";
 import { waitForInbox, waitForReply } from "../wait.js";
 import { serve, type ToolContext } from "./rpc.js";

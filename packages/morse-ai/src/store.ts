@@ -1,11 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
+import { FileRegistry, type Agent, type AgentStatus } from "@morse-ai/registry";
 import { openDb, now } from "./db.js";
 
-export type AgentStatus = "idle" | "working" | "blocked" | "done" | "offline";
 export type MessageKind = "message" | "ask" | "reply" | "broadcast" | "system";
-
-/** An agent is considered present if it has touched the bus this recently. */
-export const ONLINE_WINDOW_MS = 90_000;
 
 export const BROADCAST = "*";
 
@@ -21,26 +18,6 @@ export interface Message {
   createdAt: number;
   /** Who the message was addressed to; `['*']` for a broadcast. */
   to: string[];
-}
-
-export interface Agent {
-  room: string;
-  name: string;
-  role: string | null;
-  description: string | null;
-  skills: string[];
-  status: AgentStatus;
-  statusNote: string | null;
-  harness: string | null;
-  pid: number | null;
-  cwd: string | null;
-  cursor: number;
-  joinedAt: number;
-  lastSeen: number;
-  /** Heartbeating: in the wait loop and listening right now. */
-  online: boolean;
-  /** Process still exists, even if it has not touched the bus recently. */
-  alive: boolean;
 }
 
 export interface RegisterInput {
@@ -67,140 +44,171 @@ export interface SendInput {
 
 type Row = Record<string, unknown>;
 
+/**
+ * The message log, plus just enough of the registry to keep the existing API.
+ *
+ * Agent records live in files and are owned by `@morse-ai/registry`; only the
+ * read cursor stays here, because it is a property of a mailbox rather than of
+ * an identity. See docs/plans/multi-package-split.md.
+ */
 export class Store {
-  constructor(private readonly db: DatabaseSync = openDb()) {}
+  private readonly registry: FileRegistry;
+  /** Rooms whose legacy rows have been checked this process. */
+  private readonly imported = new Set<string>();
+
+  constructor(
+    private readonly db: DatabaseSync = openDb(),
+    registry: FileRegistry = new FileRegistry(),
+  ) {
+    this.registry = registry;
+  }
 
   // ---------------------------------------------------------------- rooms
 
-  ensureRoom(room: string, topic?: string): void {
-    this.db
-      .prepare(`INSERT INTO rooms (name, topic, created_at) VALUES (?, ?, ?)
-                ON CONFLICT(name) DO UPDATE SET topic = COALESCE(excluded.topic, rooms.topic)`)
-      .run(room, topic ?? null, now());
-  }
-
+  /**
+   * Every room morse knows about: ones with agents, and ones with only traffic.
+   *
+   * Both halves are needed. A room whose agents have all been forgotten still
+   * has a log worth finding, and a room somebody joined but never spoke in is
+   * still a room.
+   */
   listRooms(): { name: string; topic: string | null; agents: number; messages: number }[] {
+    const counts = new Map<string, number>();
+    for (const room of this.registry.listRooms()) counts.set(room.name, room.agents);
+
     const rows = this.db
-      .prepare(
-        `SELECT r.name, r.topic,
-                (SELECT COUNT(*) FROM agents a WHERE a.room = r.name)   AS agents,
-                (SELECT COUNT(*) FROM messages m WHERE m.room = r.name) AS messages
-         FROM rooms r ORDER BY r.name`,
-      )
+      .prepare(`SELECT room, COUNT(*) AS messages FROM messages GROUP BY room`)
       .all() as Row[];
-    return rows.map((r) => ({
-      name: String(r.name),
-      topic: (r.topic as string | null) ?? null,
-      agents: Number(r.agents),
-      messages: Number(r.messages),
+    const messages = new Map<string, number>();
+    for (const row of rows) {
+      const name = String(row.room);
+      messages.set(name, Number(row.messages));
+      if (!counts.has(name)) counts.set(name, this.registry.list(name).length);
+    }
+
+    return [...counts.keys()].sort().map((name) => ({
+      name,
+      // Never populated in any released version; kept so the shape does not change.
+      topic: null,
+      agents: counts.get(name) ?? 0,
+      messages: messages.get(name) ?? 0,
     }));
   }
 
   // --------------------------------------------------------------- agents
 
   register(input: RegisterInput): Agent {
-    const { room, name } = input;
-    this.ensureRoom(room);
-    const ts = now();
-    const existing = this.getAgent(room, name);
+    this.importLegacy(input.room);
+    const name = input.name.trim().toLowerCase();
 
-    if (existing) {
-      // Re-registering keeps the read cursor so a reconnecting agent does not
-      // lose messages that arrived while it was away.
-      this.db
-        .prepare(
-          `UPDATE agents SET
-             role        = COALESCE(?, role),
-             description = COALESCE(?, description),
-             skills      = COALESCE(?, skills),
-             harness     = COALESCE(?, harness),
-             pid         = COALESCE(?, pid),
-             cwd         = COALESCE(?, cwd),
-             present     = 1,
-             -- Coming back means there is more to do, so a terminal status from
-             -- the previous session must not linger and fake convergence.
-             status      = CASE WHEN status IN ('offline', 'done') THEN 'idle' ELSE status END,
-             last_seen   = ?
-           WHERE room = ? AND name = ?`,
-        )
-        .run(
-          input.role ?? null,
-          input.description ?? null,
-          input.skills ? JSON.stringify(input.skills) : null,
-          input.harness ?? null,
-          input.pid ?? null,
-          input.cwd ?? null,
-          ts,
-          room,
-          name,
-        );
-    } else {
+    // "First time" is a question about the mailbox, not about the directory:
+    // the join announcement marks acquiring an inbox here, and an agent may
+    // well have been published by something that never touched this bus.
+    const hasMailbox = this.cursorOf(input.room, name) !== undefined;
+    const { agent } = this.registry.publish({ ...input, name });
+
+    if (!hasMailbox) {
       // A first-time joiner starts at the current high-water mark rather than
       // being flooded with the room's backlog. `history` is there if it wants it.
-      const cursor = this.maxMessageId(room);
-      this.db
-        .prepare(
-          `INSERT INTO agents (room, name, role, description, skills, status, harness, pid, cwd, cursor, joined_at, last_seen)
-           VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          room,
-          name,
-          input.role ?? null,
-          input.description ?? null,
-          JSON.stringify(input.skills ?? []),
-          input.harness ?? null,
-          input.pid ?? null,
-          input.cwd ?? null,
-          cursor,
-          ts,
-          ts,
-        );
-      this.systemMessage(room, `${name} joined the room.`);
+      this.setCursor(input.room, name, this.maxMessageId(input.room));
+      this.systemMessage(input.room, `${name} joined the room.`);
     }
-
-    return this.getAgent(room, name)!;
+    return agent;
   }
 
   getAgent(room: string, name: string): Agent | undefined {
-    const row = this.db.prepare(`SELECT * FROM agents WHERE room = ? AND name = ?`).get(room, name) as
-      | Row
-      | undefined;
-    return row ? toAgent(row) : undefined;
+    this.importLegacy(room);
+    return this.registry.get(room, name);
   }
 
   roster(room: string): Agent[] {
-    const rows = this.db
-      .prepare(`SELECT * FROM agents WHERE room = ? ORDER BY joined_at`)
-      .all(room) as Row[];
-    return rows.map(toAgent);
+    this.importLegacy(room);
+    return this.registry.list(room);
   }
 
   /** Bump last_seen. Called on every tool invocation and every wait poll. */
   touch(room: string, name: string): void {
-    this.db.prepare(`UPDATE agents SET last_seen = ? WHERE room = ? AND name = ?`).run(now(), room, name);
+    this.registry.heartbeat(room, name);
   }
 
   setStatus(room: string, name: string, status: AgentStatus, note?: string | null): void {
-    this.db
-      .prepare(`UPDATE agents SET status = ?, status_note = ?, last_seen = ? WHERE room = ? AND name = ?`)
-      .run(status, note ?? null, now(), room, name);
+    this.registry.setStatus(room, name, status, note);
+  }
+
+  leave(room: string, name: string, announce = true): void {
+    this.registry.depart(room, name);
+    if (announce) this.systemMessage(room, `${name} left the room.`);
   }
 
   /**
-   * Departure clears presence but leaves `status` alone.
+   * Move agent rows written by a pre-0.3 morse into files, once per room.
    *
-   * Presence and status answer different questions — "is anyone there" versus
-   * "how did their work end" — and overwriting status on the way out destroys
-   * the only record of the second. A room where everyone finished then looked
-   * identical to one where everyone crashed, which is precisely the case a
-   * human needs to tell apart after the processes are gone.
+   * Triggered from the read paths as well as the write ones on purpose. Hanging
+   * it off `register` alone would work for `morse join` and leave `morse roster`
+   * and `morse log` showing an empty room against a populated database — which
+   * reads exactly like the upgrade ate your history.
    */
-  leave(room: string, name: string, announce = true): void {
+  private importLegacy(room: string): void {
+    if (this.imported.has(room)) return;
+    this.imported.add(room);
+    if (this.registry.list(room).length > 0) return;
+
+    let rows: Row[];
+    try {
+      rows = this.db.prepare(`SELECT * FROM agents WHERE room = ?`).all(room) as Row[];
+    } catch {
+      return; // No legacy table: a store created by this version or later.
+    }
+    if (rows.length === 0) return;
+
+    for (const row of rows) {
+      const name = String(row.name).trim().toLowerCase();
+      try {
+        this.registry.publish({
+          room,
+          name,
+          role: (row.role as string | null) ?? undefined,
+          description: (row.description as string | null) ?? undefined,
+          skills: parseSkills(row.skills),
+          harness: (row.harness as string | null) ?? undefined,
+          pid: row.pid === null ? undefined : Number(row.pid),
+          cwd: (row.cwd as string | null) ?? undefined,
+        });
+        // Carry the read position across, or the agent is handed the backlog.
+        this.setCursor(room, name, Number(row.cursor ?? 0));
+        const status = String(row.status ?? "idle") as AgentStatus;
+        this.registry.setStatus(room, name, status, (row.status_note as string | null) ?? null);
+        if (Number(row.present ?? 1) === 0) this.registry.depart(room, name);
+      } catch {
+        // One unnameable legacy row must not block the rest of the room.
+      }
+    }
+  }
+
+  // -------------------------------------------------------------- cursors
+
+  /**
+   * The import fires here rather than at each call site, because every path
+   * that cares about a cursor — `inbox`, `unreadCount`, `register` — goes
+   * through it. Wiring it to the roster alone left `morse log` on an upgraded
+   * room reporting zero unread against a mailbox that was seven messages
+   * behind, which is the quiet half of "the upgrade ate my room".
+   */
+  private cursorOf(room: string, name: string): number | undefined {
+    this.importLegacy(room);
+    const row = this.db
+      .prepare(`SELECT cursor FROM cursors WHERE room = ? AND name = ?`)
+      .get(room, name) as Row | undefined;
+    return row === undefined ? undefined : Number(row.cursor);
+  }
+
+  private setCursor(room: string, name: string, cursor: number): void {
     this.db
-      .prepare(`UPDATE agents SET present = 0, last_seen = ? WHERE room = ? AND name = ?`)
-      .run(now(), room, name);
-    if (announce) this.systemMessage(room, `${name} left the room.`);
+      .prepare(
+        `INSERT INTO cursors (room, name, cursor) VALUES (?, ?, ?)
+         ON CONFLICT(room, name) DO UPDATE SET cursor = excluded.cursor`,
+      )
+      .run(room, name, cursor);
   }
 
   // ------------------------------------------------------------- messages
@@ -268,8 +276,8 @@ export class Store {
    * message "read".
    */
   inbox(room: string, name: string, opts: { advance?: boolean; limit?: number } = {}): Message[] {
-    const agent = this.getAgent(room, name);
-    if (!agent) return [];
+    const cursor = this.cursorOf(room, name);
+    if (cursor === undefined) return []; // No mailbox here yet.
     const limit = opts.limit ?? 50;
 
     const rows = this.db
@@ -280,21 +288,21 @@ export class Store {
                        WHERE d.message_id = m.id AND (d.recipient = ? OR d.recipient = '*'))
          ORDER BY m.id LIMIT ?`,
       )
-      .all(room, agent.cursor, name, name, limit) as Row[];
+      .all(room, cursor, name, name, limit) as Row[];
 
     const messages = rows.map((r) => this.hydrate(r));
     if (opts.advance !== false && messages.length > 0) {
       const last = messages[messages.length - 1]!.id;
       this.db
-        .prepare(`UPDATE agents SET cursor = ? WHERE room = ? AND name = ? AND cursor < ?`)
+        .prepare(`UPDATE cursors SET cursor = ? WHERE room = ? AND name = ? AND cursor < ?`)
         .run(last, room, name, last);
     }
     return messages;
   }
 
   unreadCount(room: string, name: string): number {
-    const agent = this.getAgent(room, name);
-    if (!agent) return 0;
+    const cursor = this.cursorOf(room, name);
+    if (cursor === undefined) return 0;
     const row = this.db
       .prepare(
         `SELECT COUNT(*) AS n FROM messages m
@@ -302,7 +310,7 @@ export class Store {
            AND EXISTS (SELECT 1 FROM deliveries d
                        WHERE d.message_id = m.id AND (d.recipient = ? OR d.recipient = '*'))`,
       )
-      .get(room, agent.cursor, name, name) as Row;
+      .get(room, cursor, name, name) as Row;
     return Number(row.n);
   }
 
@@ -374,8 +382,17 @@ export class Store {
   clearRoom(room: string): void {
     this.db.prepare(`DELETE FROM deliveries WHERE room = ?`).run(room);
     this.db.prepare(`DELETE FROM messages WHERE room = ?`).run(room);
-    this.db.prepare(`DELETE FROM agents WHERE room = ?`).run(room);
-    this.db.prepare(`DELETE FROM rooms WHERE name = ?`).run(room);
+    this.db.prepare(`DELETE FROM cursors WHERE room = ?`).run(room);
+    // Legacy rows for this room go too. Dropping the table is off limits, but
+    // `morse reset` means the room is gone — leaving 0.2 rows behind would
+    // resurrect the roster on the next read, which is not what "cleared" means.
+    try {
+      this.db.prepare(`DELETE FROM agents WHERE room = ?`).run(room);
+    } catch {
+      // No legacy table, which is the normal case from 0.3.0 on.
+    }
+    this.registry.forgetRoom(room);
+    this.imported.delete(room);
   }
 
   private hydrate(row: Row): Message {
@@ -395,51 +412,6 @@ export class Store {
       createdAt: Number(row.created_at),
       to: recipients.map((r) => String(r.recipient)),
     };
-  }
-}
-
-function toAgent(row: Row): Agent {
-  const lastSeen = Number(row.last_seen);
-  const status = String(row.status) as AgentStatus;
-  // `present` is cleared on a clean exit; last_seen catches the ones that died
-  // without getting the chance to say so.
-  const present = row.present === undefined || Number(row.present) === 1;
-  return {
-    room: String(row.room),
-    name: String(row.name),
-    role: (row.role as string | null) ?? null,
-    description: (row.description as string | null) ?? null,
-    skills: parseSkills(row.skills),
-    status,
-    statusNote: (row.status_note as string | null) ?? null,
-    harness: (row.harness as string | null) ?? null,
-    pid: row.pid === null ? null : Number(row.pid),
-    cwd: (row.cwd as string | null) ?? null,
-    cursor: Number(row.cursor),
-    joinedAt: Number(row.joined_at),
-    lastSeen,
-    online: present && status !== "offline" && now() - lastSeen < ONLINE_WINDOW_MS,
-    alive: present && isRunning(row.pid === null ? null : Number(row.pid)),
-  };
-}
-
-/**
- * Distinguishes a session that is up but not listening from one that is gone.
- *
- * A harness only acts on its turn, so an agent that has been launched but not
- * yet prompted registers once and then goes quiet. Judged on heartbeat alone it
- * looks identical to a crashed process — but its inbox is still filling up, and
- * a teammate needs to know the difference between "nobody is there" and "they
- * just have not looked yet". The store is machine-wide, so the pid is local.
- */
-function isRunning(pid: number | null): boolean {
-  if (pid === null) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM means it exists but belongs to someone else, which still counts.
-    return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 

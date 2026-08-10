@@ -9,3 +9,13 @@
  * Role and plugin discovery is a separate entry point, `@morse-ai/registry/discovery`.
  */
 export { resolveRoom, sanitizeRoom } from "./room.js";
+export {
+  FileRegistry,
+  ONLINE_WINDOW_MS,
+  isRunning,
+  isValidAgentName,
+  registryRoot,
+  type Agent,
+  type AgentStatus,
+  type PublishInput,
+} from "./registry.js";

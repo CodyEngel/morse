@@ -19,28 +19,17 @@ export function dbPath(): string {
   return join(home, "morse.db");
 }
 
+// `rooms` and `agents` are deliberately absent: agent records are files owned
+// by @morse-ai/registry, and a room is a directory. Databases written by an
+// earlier morse still have both tables and they are never dropped — Store
+// reads them once per room to import, and otherwise leaves them alone.
 const SCHEMA = [
-  `CREATE TABLE IF NOT EXISTS rooms (
-     name        TEXT PRIMARY KEY,
-     topic       TEXT,
-     created_at  INTEGER NOT NULL
-   )`,
-
-  `CREATE TABLE IF NOT EXISTS agents (
-     room        TEXT NOT NULL,
-     name        TEXT NOT NULL,
-     role        TEXT,
-     description TEXT,
-     skills      TEXT NOT NULL DEFAULT '[]',
-     status      TEXT NOT NULL DEFAULT 'idle',
-     status_note TEXT,
-     harness     TEXT,
-     pid         INTEGER,
-     cwd         TEXT,
-     cursor      INTEGER NOT NULL DEFAULT 0,
-     present     INTEGER NOT NULL DEFAULT 1,
-     joined_at   INTEGER NOT NULL,
-     last_seen   INTEGER NOT NULL,
+  // A read high-water mark is a property of a mailbox, not of an identity,
+  // which is why this stayed behind when the agent record left.
+  `CREATE TABLE IF NOT EXISTS cursors (
+     room   TEXT NOT NULL,
+     name   TEXT NOT NULL,
+     cursor INTEGER NOT NULL DEFAULT 0,
      PRIMARY KEY (room, name)
    )`,
 
@@ -70,8 +59,15 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_deliveries_recipient ON deliveries (room, recipient, message_id)`,
 ];
 
-/** Applied on top of SCHEMA for databases created by an earlier version. */
-const ADDITIONS = [`ALTER TABLE agents ADD COLUMN present INTEGER NOT NULL DEFAULT 1`];
+/**
+ * Applied on top of SCHEMA for databases created by an earlier version.
+ *
+ * Empty since 0.3.0: the columns this used to add belong to the legacy `agents`
+ * table, which is no longer written. Kept rather than deleted because the
+ * migration discipline it encodes — additive only, never destructive — is the
+ * reason a 0.2 store and a 0.3 store can share a machine.
+ */
+const ADDITIONS: string[] = [];
 
 let cached: DatabaseSync | undefined;
 

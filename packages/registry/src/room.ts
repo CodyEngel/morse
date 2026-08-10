@@ -25,11 +25,23 @@ export function resolveRoom(cwd = process.cwd()): string {
   return sanitizeRoom(basename(cwd));
 }
 
+/**
+ * A room name is now a path component — `~/.morse/rooms/<room>/agents` — and
+ * not merely a SQL value, so it must not be able to climb out of the directory
+ * it names. Slashes were already stripped, which stopped `../../etc`, but a
+ * bare `..` survived: dots are legal in a room name and `-` trimming turned
+ * `-..-` back into `..` on the way out.
+ *
+ * Anything that is only dots is refused rather than mangled. Mangling would
+ * silently put an agent in a room it did not ask for, which is worse than
+ * landing in `default` and being able to see that you did.
+ */
 export function sanitizeRoom(name: string): string {
   const cleaned = name
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return cleaned || "default";
+  if (!cleaned || /^\.+$/.test(cleaned)) return "default";
+  return cleaned;
 }

@@ -1,4 +1,5 @@
-import type { Agent, AgentStatus, Message } from "../store.js";
+import type { Message } from "../store.js";
+import type { Agent, AgentStatus } from "@morse-ai/registry";
 
 const enabled = process.stdout.isTTY === true && !process.env.NO_COLOR;
 

@@ -1,7 +1,18 @@
 export { openDb, dbPath, resetDb } from "./db.js";
 // Re-exported rather than dropped: splitting morse into packages is not a
 // reason for anyone importing `morse-ai` to have to learn where things went.
-export { resolveRoom, sanitizeRoom } from "@morse-ai/registry";
+export {
+  resolveRoom,
+  sanitizeRoom,
+  FileRegistry,
+  ONLINE_WINDOW_MS,
+  isRunning,
+  isValidAgentName,
+  registryRoot,
+  type Agent,
+  type AgentStatus,
+  type PublishInput,
+} from "@morse-ai/registry";
 export {
   isValidRoleName,
   isInside,
@@ -36,11 +47,8 @@ export { buildPrompt, type PromptOptions } from "./prompt.js";
 export {
   Store,
   BROADCAST,
-  ONLINE_WINDOW_MS,
   normalizeRecipients,
   newThreadId,
-  type Agent,
-  type AgentStatus,
   type Message,
   type MessageKind,
 } from "./store.js";
