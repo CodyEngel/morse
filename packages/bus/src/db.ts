@@ -1,3 +1,10 @@
+// First, and deliberately: this installs the filter that silences node:sqlite's
+// experimental warning, and ESM runs an imported module's body before its
+// importer's. Owning it here rather than at an entrypoint is the point — there
+// are three entrypoints now, and "remember to import warnings first" is not a
+// contract three packages can keep. Whoever opens a database gets it right by
+// construction.
+import "./warnings.js";
 import type { DatabaseSync } from "node:sqlite";
 import { chmodSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
