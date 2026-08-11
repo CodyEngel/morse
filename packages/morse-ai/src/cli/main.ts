@@ -18,9 +18,9 @@ import {
   roleTemplate,
   type RoleRejection,
 } from "@morse-ai/registry/discovery";
-import { BROADCAST, Store, normalizeRecipients } from "../store.js";
+import { BROADCAST, normalizeRecipients, waitForReply } from "@morse-ai/bus";
+import { Morse } from "../morse.js";
 import { VERSION } from "../version.js";
-import { waitForReply } from "../wait.js";
 import { agentColor, bold, cyan, dim, formatMessage, relativeTime, safe, statusBadge, yellow } from "./format.js";
 
 const HELP = `morse ${VERSION} — agent-to-agent communication for solo builders
@@ -272,7 +272,7 @@ function harnessKind(harness: string): "claude" | "codex" {
 // -------------------------------------------------------------- inspection
 
 function roster(room: string): void {
-  const store = new Store();
+  const store = new Morse();
   const agents = store.roster(room);
   if (agents.length === 0) {
     console.log(`No agents in room ${cyan(room)} yet. Start one with ${bold("morse join <agent>")}.`);
@@ -296,7 +296,7 @@ function roster(room: string): void {
 }
 
 function status(room: string): void {
-  const store = new Store();
+  const store = new Morse();
   const agents = store.roster(room);
   const online = agents.filter((a) => a.online);
   const done = agents.filter((a) => a.status === "done");
@@ -311,7 +311,7 @@ function status(room: string): void {
 }
 
 async function log(args: Args, room: string): Promise<void> {
-  const store = new Store();
+  const store = new Morse();
   const limit = Number(args.flags.n ?? args.flags.lines ?? 40);
   const follow = Boolean(args.flags.f ?? args.flags.follow);
 
@@ -334,7 +334,7 @@ async function log(args: Args, room: string): Promise<void> {
 }
 
 function rooms(): void {
-  const store = new Store();
+  const store = new Morse();
   const all = store.listRooms();
   if (all.length === 0) {
     console.log("No rooms yet.");
@@ -466,7 +466,7 @@ function prompt(args: Args, room: string): void {
  * The human is a first-class member of the room, not a special case: `operator`
  * registers like any agent so the six can address questions back at you.
  */
-function operator(store: Store, room: string): string {
+function operator(store: Morse, room: string): string {
   const name = process.env.MORSE_OPERATOR ?? "operator";
   store.register({
     room,
@@ -479,7 +479,7 @@ function operator(store: Store, room: string): string {
   return name;
 }
 
-function send(args: Args, room: string): void {
+async function send(args: Args, room: string): Promise<void> {
   const [to, ...rest] = args.positional;
   const body = rest.join(" ");
   if (!to || !body) {
@@ -487,10 +487,10 @@ function send(args: Args, room: string): void {
     process.exitCode = 1;
     return;
   }
-  const store = new Store();
+  const store = new Morse();
   const me = operator(store, room);
   const recipients = normalizeRecipients(to.split(","));
-  const unknown = store.unknownRecipients(room, recipients);
+  const unknown = await store.unknownRecipients(room, recipients);
   const message = store.send({ room, sender: me, to: recipients, body });
   console.log(`${dim("sent")} #${message.id} → ${recipients.includes(BROADCAST) ? "all" : recipients.join(", ")}`);
   if (unknown.length) console.log(yellow(`  warning: not in this room: ${unknown.join(", ")}`));
@@ -504,13 +504,13 @@ async function ask(args: Args, room: string): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const store = new Store();
+  const store = new Morse();
   const me = operator(store, room);
   const timeout = Number(args.flags.timeout ?? 120) * 1000;
   const sent = store.send({ room, sender: me, to: [to], body, kind: "ask" });
   console.log(dim(`asked ${to}, waiting up to ${Math.round(timeout / 1000)}s…\n`));
 
-  const result = await waitForReply(store, room, me, sent.threadId, sent.id, { timeoutMs: timeout });
+  const result = await waitForReply(store.bus, room, me, sent.threadId, sent.id, { timeoutMs: timeout });
   for (const message of result.inbox) console.log(formatMessage(message), "\n");
   if (result.reply) {
     console.log(formatMessage(result.reply));
@@ -555,7 +555,7 @@ function init(room: string): void {
  * is about to go, and require --force when there is no terminal to confirm at.
  */
 async function reset(args: Args, room: string): Promise<void> {
-  const store = new Store();
+  const store = new Morse();
   const agents = store.roster(room);
   const messages = store.maxMessageId(room);
 

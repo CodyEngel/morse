@@ -7,13 +7,13 @@ import { join } from "node:path";
 const tmp = mkdtempSync(join(tmpdir(), "morse-test-"));
 process.env.MORSE_DB = join(tmp, "test.db");
 
-const { Store, resetDb, waitForInbox, waitForReply } = await import("../packages/morse-ai/dist/index.js");
+const { Morse, resetDb, waitForInbox, waitForReply } = await import("../packages/morse-ai/dist/index.js");
 
 const ROOM = "test-room";
 let store;
 
 beforeEach(() => {
-  store = new Store();
+  store = new Morse();
   store.clearRoom(ROOM);
 });
 
@@ -108,10 +108,12 @@ test("rooms isolate traffic", () => {
   store.clearRoom("other-room");
 });
 
-test("unknown recipients are reported rather than silently swallowed", () => {
+// Async since 0.3.0: the bus asks a registry it holds through an interface, and
+// that interface tolerates a promise so a remote registry stays implementable.
+test("unknown recipients are reported rather than silently swallowed", async () => {
   store.register({ room: ROOM, name: "a" });
-  assert.deepEqual(store.unknownRecipients(ROOM, ["a", "ghost"]), ["ghost"]);
-  assert.deepEqual(store.unknownRecipients(ROOM, ["*"]), []);
+  assert.deepEqual(await store.unknownRecipients(ROOM, ["a", "ghost"]), ["ghost"]);
+  assert.deepEqual(await store.unknownRecipients(ROOM, ["*"]), []);
 });
 
 test("replies target whoever spoke last on the thread", () => {
@@ -126,7 +128,7 @@ test("waitForInbox returns as soon as a message lands", async () => {
   store.register({ room: ROOM, name: "a" });
   store.register({ room: ROOM, name: "b" });
 
-  const parked = waitForInbox(store, ROOM, "b", { timeoutMs: 3000, pollMs: 20 });
+  const parked = waitForInbox(store.bus, ROOM, "b", { timeoutMs: 3000, pollMs: 20 });
   setTimeout(() => store.send({ room: ROOM, sender: "a", to: ["b"], body: "wake up" }), 60);
 
   const messages = await parked;
@@ -136,7 +138,7 @@ test("waitForInbox returns as soon as a message lands", async () => {
 
 test("waitForInbox gives up at the timeout instead of hanging", async () => {
   store.register({ room: ROOM, name: "a" });
-  const messages = await waitForInbox(store, ROOM, "a", { timeoutMs: 120, pollMs: 20 });
+  const messages = await waitForInbox(store.bus, ROOM, "a", { timeoutMs: 120, pollMs: 20 });
   assert.equal(messages.length, 0);
 });
 
@@ -145,7 +147,7 @@ test("waitForReply resolves with the answer to its own thread", async () => {
   store.register({ room: ROOM, name: "backend" });
 
   const asked = store.send({ room: ROOM, sender: "qe", to: ["backend"], body: "zero rows?", kind: "ask" });
-  const parked = waitForReply(store, ROOM, "qe", asked.threadId, asked.id, { timeoutMs: 3000, pollMs: 20 });
+  const parked = waitForReply(store.bus, ROOM, "qe", asked.threadId, asked.id, { timeoutMs: 3000, pollMs: 20 });
 
   setTimeout(() => {
     store.send({
@@ -167,7 +169,7 @@ test("waitForReply breaks out when unrelated mail arrives, so peers cannot deadl
   for (const name of ["a", "b", "c"]) store.register({ room: ROOM, name });
 
   const asked = store.send({ room: ROOM, sender: "a", to: ["b"], body: "need a decision", kind: "ask" });
-  const parked = waitForReply(store, ROOM, "a", asked.threadId, asked.id, { timeoutMs: 3000, pollMs: 20 });
+  const parked = waitForReply(store.bus, ROOM, "a", asked.threadId, asked.id, { timeoutMs: 3000, pollMs: 20 });
 
   // c asks a something while a is parked. Without the early return, a would sit
   // on a reply that b cannot send because b is waiting on a.
@@ -191,7 +193,7 @@ test("waitForReply hands back everything it consumed, not just the reply", async
   store.send({ room: ROOM, sender: "b", to: ["a"], body: "yes", threadId: asked.threadId, kind: "reply" });
   const broadcast = store.send({ room: ROOM, sender: "c", to: ["*"], body: "shipping at 5" });
 
-  const result = await waitForReply(store, ROOM, "a", asked.threadId, asked.id, { timeoutMs: 1000, pollMs: 20 });
+  const result = await waitForReply(store.bus, ROOM, "a", asked.threadId, asked.id, { timeoutMs: 1000, pollMs: 20 });
 
   assert.equal(result.outcome, "replied");
   assert.equal(result.reply.body, "yes");
@@ -214,8 +216,8 @@ test("two agents asking each other simultaneously both make progress", async () 
   const yAsks = store.send({ room: ROOM, sender: "y", to: ["x"], body: "y->x?", kind: "ask" });
 
   const [xResult, yResult] = await Promise.all([
-    waitForReply(store, ROOM, "x", xAsks.threadId, xAsks.id, { timeoutMs: 2000, pollMs: 20 }),
-    waitForReply(store, ROOM, "y", yAsks.threadId, yAsks.id, { timeoutMs: 2000, pollMs: 20 }),
+    waitForReply(store.bus, ROOM, "x", xAsks.threadId, xAsks.id, { timeoutMs: 2000, pollMs: 20 }),
+    waitForReply(store.bus, ROOM, "y", yAsks.threadId, yAsks.id, { timeoutMs: 2000, pollMs: 20 }),
   ]);
 
   // Neither hangs: each is handed the other's question instead of blocking.

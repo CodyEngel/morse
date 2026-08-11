@@ -1,6 +1,27 @@
-export { openDb, dbPath, resetDb } from "./db.js";
-// Re-exported rather than dropped: splitting morse into packages is not a
-// reason for anyone importing `morse-ai` to have to learn where things went.
+// morse-ai is the composition layer: it re-exports both halves so that a single
+// import still gets you everything, and adds the pieces that genuinely need
+// both — `Morse` itself, the protocol prompt, and the CLI.
+export {
+  Bus,
+  BROADCAST,
+  normalizeRecipients,
+  newThreadId,
+  unregistered,
+  waitForInbox,
+  waitForReply,
+  openDb,
+  dbPath,
+  resetDb,
+  type BusOptions,
+  type Message,
+  type MessageKind,
+  type SendInput,
+  type Registry,
+  type Status,
+  type AskResult,
+  type AskOutcome,
+  type WaitOptions,
+} from "@morse-ai/bus";
 export {
   resolveRoom,
   sanitizeRoom,
@@ -43,15 +64,7 @@ export {
   tomlString,
   type TomlValue,
 } from "@morse-ai/registry/discovery";
+export { Morse, type RegisterInput } from "./morse.js";
 export { buildPrompt, type PromptOptions } from "./prompt.js";
-export {
-  Store,
-  BROADCAST,
-  normalizeRecipients,
-  newThreadId,
-  type Message,
-  type MessageKind,
-} from "./store.js";
-export { waitForInbox, waitForReply, type AskResult, type WaitOptions } from "./wait.js";
 export { VERSION } from "./version.js";
 export { buildHarnessArgs } from "./cli/main.js";

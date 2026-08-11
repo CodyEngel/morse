@@ -7,7 +7,7 @@ import { join } from "node:path";
 const tmp = mkdtempSync(join(tmpdir(), "morse-sec-"));
 process.env.MORSE_DB = join(tmp, "sec.db");
 
-const { Store, resetDb, loadRole, isValidRoleName, isInside } = await import("../packages/morse-ai/dist/index.js");
+const { Morse, resetDb, loadRole, isValidRoleName, isInside } = await import("../packages/morse-ai/dist/index.js");
 const { safe, formatMessage } = await import("../packages/morse-ai/dist/cli/format.js");
 
 const ESC = "\x1b";
@@ -54,7 +54,7 @@ test("escapes are stripped from names, subjects and status notes too", () => {
 test("a message with escapes is stored verbatim but rendered safely", () => {
   // Escaping belongs at the boundary, not in the store: a consumer that is not
   // a terminal should still get exactly what the agent wrote.
-  const store = new Store();
+  const store = new Morse();
   store.register({ room: "esc", name: "a" });
   const body = `x${ESC}[31m`;
   store.send({ room: "esc", sender: "a", to: ["*"], body });
@@ -78,7 +78,7 @@ test("a role name cannot escape the roles directory", () => {
 });
 
 test("the store is not readable by other accounts", () => {
-  const store = new Store();
+  const store = new Morse();
   store.register({ room: "perm", name: "a" });
   store.send({ room: "perm", sender: "a", to: ["*"], body: "sensitive" });
 

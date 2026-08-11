@@ -1,9 +1,9 @@
 import { hostname } from "node:os";
 import { resolveRoom } from "@morse-ai/registry";
-import { BROADCAST, Store, normalizeRecipients, type Message } from "../store.js";
+import { BROADCAST, normalizeRecipients, waitForInbox, waitForReply, type Message } from "@morse-ai/bus";
+import { Morse } from "../morse.js";
 import type { AgentStatus } from "@morse-ai/registry";
 import { VERSION } from "../version.js";
-import { waitForInbox, waitForReply } from "../wait.js";
 import { serve, type ToolContext } from "./rpc.js";
 import { TOOLS } from "./tools.js";
 
@@ -11,7 +11,7 @@ const DEFAULT_WAIT_SECONDS = Number(process.env.MORSE_WAIT_SECONDS ?? 50);
 const MAX_WAIT_SECONDS = 900;
 
 export function runMcpServer(): void {
-  const store = new Store();
+  const store = new Morse();
   const room = resolveRoom();
   let identity = process.env.MORSE_AGENT?.trim() || "";
 
@@ -101,7 +101,7 @@ export function runMcpServer(): void {
         case "morse_send": {
           const to = normalizeRecipients(toStringArray(args.to));
           const body = requireString(args.body, "body");
-          const unknown = store.unknownRecipients(room, to);
+          const unknown = await store.unknownRecipients(room, to);
           const message = store.send({
             room,
             sender: me,
@@ -125,7 +125,7 @@ export function runMcpServer(): void {
         case "morse_ask": {
           const to = normalizeRecipients(toStringArray(args.to));
           const body = requireString(args.body, "body");
-          const unknown = store.unknownRecipients(room, to);
+          const unknown = await store.unknownRecipients(room, to);
           if (unknown.length > 0 && unknown.length === to.length) {
             return {
               error: `No agent named ${unknown.join(", ")} in room '${room}'.`,
@@ -143,7 +143,7 @@ export function runMcpServer(): void {
           });
           store.setStatus(room, me, "blocked", `waiting on ${to.join(", ")}`);
 
-          const result = await waitForReply(store, room, me, sent.threadId, sent.id, {
+          const result = await waitForReply(store.bus, room, me, sent.threadId, sent.id, {
             timeoutMs: waitMs(args.timeout_seconds),
             signal: ctx.signal,
           });
@@ -192,7 +192,7 @@ export function runMcpServer(): void {
             const afterId = store.lastOwnMessageId(room, threadId, me);
             store.setStatus(room, me, "blocked", `waiting for a reply on ${threadId}`);
 
-            const result = await waitForReply(store, room, me, threadId, afterId, {
+            const result = await waitForReply(store.bus, room, me, threadId, afterId, {
               timeoutMs,
               signal: ctx.signal,
             });
@@ -207,7 +207,7 @@ export function runMcpServer(): void {
             };
           }
 
-          const messages = await waitForInbox(store, room, me, { timeoutMs, signal: ctx.signal });
+          const messages = await waitForInbox(store.bus, room, me, { timeoutMs, signal: ctx.signal });
           if (messages.length === 0) {
             const roster = store.roster(room);
             return {
@@ -264,7 +264,7 @@ export function runMcpServer(): void {
   });
 }
 
-function registerSelf(store: Store, room: string, name: string): void {
+function registerSelf(store: Morse, room: string, name: string): void {
   store.register({
     room,
     name,

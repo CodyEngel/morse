@@ -1,6 +1,14 @@
 {
-  // Solution file: no sources of its own, just the graph. `tsc --build` from
-  // the repo root walks these references in dependency order.
   "files": [],
-  "references": [{ "path": "packages/registry" }, { "path": "packages/morse-ai" }]
+  "references": [
+    {
+      "path": "packages/registry"
+    },
+    {
+      "path": "packages/bus"
+    },
+    {
+      "path": "packages/morse-ai"
+    }
+  ]
 }

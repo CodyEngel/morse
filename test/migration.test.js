@@ -14,7 +14,7 @@ import { createRequire } from "node:module";
 const tmp = mkdtempSync(join(tmpdir(), "morse-migrate-"));
 process.env.MORSE_DB = join(tmp, "first.db");
 
-const { Store, resetDb, sanitizeRoom, FileRegistry, registryRoot } = await import(
+const { Morse, resetDb, sanitizeRoom, FileRegistry, registryRoot } = await import(
   "../packages/morse-ai/dist/index.js"
 );
 
@@ -83,7 +83,7 @@ test("a 0.2 room is imported on a read, not only on a join", () => {
     ],
   });
 
-  const roster = new Store().roster("old");
+  const roster = new Morse().roster("old");
   assert.equal(roster.length, 2);
 
   const backend = roster.find((a) => a.name === "backend");
@@ -102,7 +102,7 @@ test("a 0.2 room is imported on a read, not only on a join", () => {
 test("the read cursor survives the move, so no mail is redelivered or lost", () => {
   legacyRoom({ room: "old", agents: [{ name: "backend", cursor: 7 }], messages: 9 });
 
-  const store = new Store();
+  const store = new Morse();
   // Nine delivered, read up to 7: two outstanding. Drop the cursor and this
   // agent is handed its whole history again; reset it to the high-water mark
   // and the two it never saw are gone for good.
@@ -114,8 +114,8 @@ test("the read cursor survives the move, so no mail is redelivered or lost", () 
 test("importing is idempotent and leaves the legacy table alone", () => {
   const db = legacyRoom({ room: "old", agents: [{ name: "backend", cursor: 4 }], messages: 6 });
 
-  assert.equal(new Store().roster("old").length, 1);
-  const second = new Store();
+  assert.equal(new Morse().roster("old").length, 1);
+  const second = new Morse();
   assert.equal(second.roster("old").length, 1, "a second process must not double-import");
   assert.equal(second.unreadCount("old", "backend"), 2, "nor reset the cursor it already carried");
 
@@ -136,7 +136,7 @@ test("records live beside the store rather than splitting state across two homes
   assert.ok(root.startsWith(tmp), `expected the registry under ${tmp}, got ${root}`);
   assert.ok(!root.startsWith(join(homedir(), ".morse")), "must not fall back to the real home");
 
-  new Store().register({ room: "vroom", name: "backend", skills: ["sql"] });
+  new Morse().register({ room: "vroom", name: "backend", skills: ["sql"] });
   const file = join(root, "vroom", "agents", "backend.json");
   assert.ok(existsSync(file), `expected a record at ${file}`);
   // Same reasoning as the message store: everything agents publish is plaintext.

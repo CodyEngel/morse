@@ -1,4 +1,4 @@
-import type { Message, Store } from "./store.js";
+import type { Bus, Message } from "./bus.js";
 
 export interface WaitOptions {
   timeoutMs: number;
@@ -30,7 +30,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * heartbeat, which is what keeps a parked agent showing as online to its peers.
  */
 export async function waitForInbox(
-  store: Store,
+  bus: Bus,
   room: string,
   name: string,
   opts: WaitOptions,
@@ -39,8 +39,8 @@ export async function waitForInbox(
   const deadline = Date.now() + opts.timeoutMs;
 
   for (;;) {
-    store.touch(room, name);
-    const messages = store.inbox(room, name);
+    await bus.heartbeat(room, name);
+    const messages = bus.inbox(room, name);
     if (messages.length > 0) return messages;
     if (opts.signal?.aborted) return [];
     const remaining = deadline - Date.now();
@@ -66,7 +66,7 @@ export interface AskResult {
  * forever, each waiting on a peer that is itself parked.
  */
 export async function waitForReply(
-  store: Store,
+  bus: Bus,
   room: string,
   name: string,
   threadId: string,
@@ -78,13 +78,13 @@ export async function waitForReply(
   const other: Message[] = [];
 
   for (;;) {
-    store.touch(room, name);
+    await bus.heartbeat(room, name);
 
     // Drain the whole batch before deciding. inbox() has already moved the
     // cursor past every message it returned, so bailing out mid-batch on the
     // reply would silently drop anything ordered after it — unread, and now
     // unreachable.
-    const delivered = store.inbox(room, name);
+    const delivered = bus.inbox(room, name);
     let reply: Message | undefined;
     for (const message of delivered) {
       if (!reply && message.threadId === threadId && message.id > afterId) reply = message;
@@ -94,7 +94,7 @@ export async function waitForReply(
 
     // Safety net for a reply posted to the thread without addressing us.
     if (other.length === 0) {
-      const stray = store.findReply(room, threadId, afterId, name);
+      const stray = bus.findReply(room, threadId, afterId, name);
       if (stray) return { outcome: "replied", reply: stray, inbox: other };
     }
 

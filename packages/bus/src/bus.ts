@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
-import { FileRegistry, type Agent, type AgentStatus } from "@morse-ai/registry";
 import { openDb, now } from "./db.js";
+import type { Registry, Status } from "./registry.js";
 
 export type MessageKind = "message" | "ask" | "reply" | "broadcast" | "system";
 
@@ -20,17 +20,6 @@ export interface Message {
   to: string[];
 }
 
-export interface RegisterInput {
-  room: string;
-  name: string;
-  role?: string;
-  description?: string;
-  skills?: string[];
-  harness?: string;
-  pid?: number;
-  cwd?: string;
-}
-
 export interface SendInput {
   room: string;
   sender: string;
@@ -42,167 +31,64 @@ export interface SendInput {
   replyTo?: number;
 }
 
+export interface BusOptions {
+  /**
+   * Required, with no default, so that running without a registry is a thing
+   * you asked for. Pass `unregistered` to mean it.
+   */
+  registry: Registry;
+  db?: DatabaseSync;
+}
+
 type Row = Record<string, unknown>;
 
 /**
- * The message log, plus just enough of the registry to keep the existing API.
+ * The message log: rooms, delivery, threads, cursors, and the blocking waits
+ * that let a turn-based agent hear anything at all.
  *
- * Agent records live in files and are owned by `@morse-ai/registry`; only the
- * read cursor stays here, because it is a property of a mailbox rather than of
- * an identity. See docs/plans/multi-package-split.md.
+ * This is the one part of morse that genuinely needs a database, and not for
+ * concurrency — for total order. `inbox` is `id > cursor`, which requires a
+ * monotonic id across N independent processes. See
+ * docs/plans/multi-package-split.md, Decision 1.
  */
-export class Store {
-  private readonly registry: FileRegistry;
-  /** Rooms whose legacy rows have been checked this process. */
-  private readonly imported = new Set<string>();
+export class Bus {
+  private readonly db: DatabaseSync;
+  private readonly registry: Registry;
 
-  constructor(
-    private readonly db: DatabaseSync = openDb(),
-    registry: FileRegistry = new FileRegistry(),
-  ) {
-    this.registry = registry;
+  constructor(options: BusOptions) {
+    this.registry = options.registry;
+    this.db = options.db ?? openDb();
   }
 
-  // ---------------------------------------------------------------- rooms
+  // --------------------------------------------------------------- mailbox
 
   /**
-   * Every room morse knows about: ones with agents, and ones with only traffic.
+   * Give `name` a mailbox in `room`, and announce it the first time.
    *
-   * Both halves are needed. A room whose agents have all been forgotten still
-   * has a log worth finding, and a room somebody joined but never spoke in is
-   * still a room.
+   * "First time" is a question about the mailbox rather than about the
+   * directory: the announcement marks acquiring an inbox here, and an agent may
+   * well be published by something that never touched this bus. Re-joining
+   * deliberately leaves the cursor alone, which is what stops a reconnecting
+   * agent being handed everything it already read.
    */
-  listRooms(): { name: string; topic: string | null; agents: number; messages: number }[] {
-    const counts = new Map<string, number>();
-    for (const room of this.registry.listRooms()) counts.set(room.name, room.agents);
+  join(room: string, name: string, opts: { announce?: boolean } = {}): { firstTime: boolean } {
+    if (this.cursorOf(room, name) !== undefined) return { firstTime: false };
 
-    const rows = this.db
-      .prepare(`SELECT room, COUNT(*) AS messages FROM messages GROUP BY room`)
-      .all() as Row[];
-    const messages = new Map<string, number>();
-    for (const row of rows) {
-      const name = String(row.room);
-      messages.set(name, Number(row.messages));
-      if (!counts.has(name)) counts.set(name, this.registry.list(name).length);
-    }
-
-    return [...counts.keys()].sort().map((name) => ({
-      name,
-      // Never populated in any released version; kept so the shape does not change.
-      topic: null,
-      agents: counts.get(name) ?? 0,
-      messages: messages.get(name) ?? 0,
-    }));
+    // A first-time joiner starts at the current high-water mark rather than
+    // being flooded with the room's backlog. `history` is there if it wants it.
+    this.setCursor(room, name, this.maxMessageId(room));
+    if (opts.announce !== false) this.systemMessage(room, `${name} joined the room.`);
+    return { firstTime: true };
   }
 
-  // --------------------------------------------------------------- agents
-
-  register(input: RegisterInput): Agent {
-    this.importLegacy(input.room);
-    const name = input.name.trim().toLowerCase();
-
-    // "First time" is a question about the mailbox, not about the directory:
-    // the join announcement marks acquiring an inbox here, and an agent may
-    // well have been published by something that never touched this bus.
-    const hasMailbox = this.cursorOf(input.room, name) !== undefined;
-    const { agent } = this.registry.publish({ ...input, name });
-
-    if (!hasMailbox) {
-      // A first-time joiner starts at the current high-water mark rather than
-      // being flooded with the room's backlog. `history` is there if it wants it.
-      this.setCursor(input.room, name, this.maxMessageId(input.room));
-      this.systemMessage(input.room, `${name} joined the room.`);
-    }
-    return agent;
-  }
-
-  getAgent(room: string, name: string): Agent | undefined {
-    this.importLegacy(room);
-    return this.registry.get(room, name);
-  }
-
-  roster(room: string): Agent[] {
-    this.importLegacy(room);
-    return this.registry.list(room);
-  }
-
-  /** Bump last_seen. Called on every tool invocation and every wait poll. */
-  touch(room: string, name: string): void {
-    this.registry.heartbeat(room, name);
-  }
-
-  setStatus(room: string, name: string, status: AgentStatus, note?: string | null): void {
-    this.registry.setStatus(room, name, status, note);
-  }
-
-  leave(room: string, name: string, announce = true): void {
-    this.registry.depart(room, name);
-    if (announce) this.systemMessage(room, `${name} left the room.`);
-  }
-
-  /**
-   * Move agent rows written by a pre-0.3 morse into files, once per room.
-   *
-   * Triggered from the read paths as well as the write ones on purpose. Hanging
-   * it off `register` alone would work for `morse join` and leave `morse roster`
-   * and `morse log` showing an empty room against a populated database — which
-   * reads exactly like the upgrade ate your history.
-   */
-  private importLegacy(room: string): void {
-    if (this.imported.has(room)) return;
-    this.imported.add(room);
-    if (this.registry.list(room).length > 0) return;
-
-    let rows: Row[];
-    try {
-      rows = this.db.prepare(`SELECT * FROM agents WHERE room = ?`).all(room) as Row[];
-    } catch {
-      return; // No legacy table: a store created by this version or later.
-    }
-    if (rows.length === 0) return;
-
-    for (const row of rows) {
-      const name = String(row.name).trim().toLowerCase();
-      try {
-        this.registry.publish({
-          room,
-          name,
-          role: (row.role as string | null) ?? undefined,
-          description: (row.description as string | null) ?? undefined,
-          skills: parseSkills(row.skills),
-          harness: (row.harness as string | null) ?? undefined,
-          pid: row.pid === null ? undefined : Number(row.pid),
-          cwd: (row.cwd as string | null) ?? undefined,
-        });
-        // Carry the read position across, or the agent is handed the backlog.
-        this.setCursor(room, name, Number(row.cursor ?? 0));
-        const status = String(row.status ?? "idle") as AgentStatus;
-        this.registry.setStatus(room, name, status, (row.status_note as string | null) ?? null);
-        if (Number(row.present ?? 1) === 0) this.registry.depart(room, name);
-      } catch {
-        // One unnameable legacy row must not block the rest of the room.
-      }
-    }
-  }
-
-  // -------------------------------------------------------------- cursors
-
-  /**
-   * The import fires here rather than at each call site, because every path
-   * that cares about a cursor — `inbox`, `unreadCount`, `register` — goes
-   * through it. Wiring it to the roster alone left `morse log` on an upgraded
-   * room reporting zero unread against a mailbox that was seven messages
-   * behind, which is the quiet half of "the upgrade ate my room".
-   */
-  private cursorOf(room: string, name: string): number | undefined {
-    this.importLegacy(room);
+  cursorOf(room: string, name: string): number | undefined {
     const row = this.db
       .prepare(`SELECT cursor FROM cursors WHERE room = ? AND name = ?`)
       .get(room, name) as Row | undefined;
     return row === undefined ? undefined : Number(row.cursor);
   }
 
-  private setCursor(room: string, name: string, cursor: number): void {
+  setCursor(room: string, name: string, cursor: number): void {
     this.db
       .prepare(
         `INSERT INTO cursors (room, name, cursor) VALUES (?, ?, ?)
@@ -211,7 +97,38 @@ export class Store {
       .run(room, name, cursor);
   }
 
-  // ------------------------------------------------------------- messages
+  // -------------------------------------------------------------- registry
+
+  /** Heartbeat through to the registry. Called on every poll of a parked wait. */
+  async heartbeat(room: string, name: string): Promise<void> {
+    await this.registry.heartbeat(room, name);
+  }
+
+  async status(room: string, name: string): Promise<Status | undefined> {
+    return await this.registry.status(room, name);
+  }
+
+  async setStatus(room: string, name: string, status: Status, note?: string | null): Promise<void> {
+    await this.registry.setStatus(room, name, status, note);
+  }
+
+  /**
+   * Recipients that are neither `*` nor a known agent in the room.
+   *
+   * A registry that knows of nobody has no basis to call anyone unknown, so an
+   * empty roster yields no warnings rather than warning about every recipient.
+   * That distinction is the difference between a useful hint and noise: under
+   * `unregistered` — or in a room nobody has joined yet — the every-recipient
+   * version fires on every single send and means nothing.
+   */
+  async unknownRecipients(room: string, to: string[]): Promise<string[]> {
+    const names = await this.registry.names(room);
+    if (names.length === 0) return [];
+    const known = new Set(names);
+    return normalizeRecipients(to).filter((r) => r !== BROADCAST && !known.has(r));
+  }
+
+  // -------------------------------------------------------------- messages
 
   send(input: SendInput): Message {
     const recipients = normalizeRecipients(input.to);
@@ -251,12 +168,6 @@ export class Store {
       createdAt: ts,
       to: recipients,
     };
-  }
-
-  /** Recipients that are neither `*` nor a registered agent in the room. */
-  unknownRecipients(room: string, to: string[]): string[] {
-    const known = new Set(this.roster(room).map((a) => a.name));
-    return normalizeRecipients(to).filter((r) => r !== BROADCAST && !known.has(r));
   }
 
   /**
@@ -379,20 +290,24 @@ export class Store {
     return Number(row.id);
   }
 
+  /** Rooms this bus has traffic for. Says nothing about who is in them. */
+  rooms(): { name: string; messages: number }[] {
+    const rows = this.db
+      .prepare(`SELECT room, COUNT(*) AS messages FROM messages GROUP BY room ORDER BY room`)
+      .all() as Row[];
+    return rows.map((row) => ({ name: String(row.room), messages: Number(row.messages) }));
+  }
+
+  /** Drops this room's traffic and mailboxes. Agent records are not ours to clear. */
   clearRoom(room: string): void {
     this.db.prepare(`DELETE FROM deliveries WHERE room = ?`).run(room);
     this.db.prepare(`DELETE FROM messages WHERE room = ?`).run(room);
     this.db.prepare(`DELETE FROM cursors WHERE room = ?`).run(room);
-    // Legacy rows for this room go too. Dropping the table is off limits, but
-    // `morse reset` means the room is gone — leaving 0.2 rows behind would
-    // resurrect the roster on the next read, which is not what "cleared" means.
-    try {
-      this.db.prepare(`DELETE FROM agents WHERE room = ?`).run(room);
-    } catch {
-      // No legacy table, which is the normal case from 0.3.0 on.
-    }
-    this.registry.forgetRoom(room);
-    this.imported.delete(room);
+  }
+
+  /** Escape hatch for the composition layer, which owns the 0.2 -> 0.3 import. */
+  get database(): DatabaseSync {
+    return this.db;
   }
 
   private hydrate(row: Row): Message {
@@ -412,16 +327,6 @@ export class Store {
       createdAt: Number(row.created_at),
       to: recipients.map((r) => String(r.recipient)),
     };
-  }
-}
-
-function parseSkills(value: unknown): string[] {
-  if (typeof value !== "string") return [];
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.map(String) : [];
-  } catch {
-    return [];
   }
 }
 

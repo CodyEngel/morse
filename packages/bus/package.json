@@ -1,20 +1,18 @@
 {
-  "name": "morse-ai",
+  "name": "@morse-ai/bus",
   "version": "0.2.0",
-  "description": "A simplistic agent-to-agent communication platform for solo builders.",
+  "description": "The morse message bus: rooms, delivery, threads, and blocking waits over one SQLite file.",
   "keywords": [
-    "mcp",
     "agents",
     "multi-agent",
-    "claude-code",
-    "codex",
-    "opencode"
+    "message-bus",
+    "morse"
   ],
   "homepage": "https://github.com/CodyEngel/morse#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/CodyEngel/morse.git",
-    "directory": "packages/morse-ai"
+    "directory": "packages/bus"
   },
   "bugs": {
     "url": "https://github.com/CodyEngel/morse/issues"
@@ -25,9 +23,6 @@
   },
   "license": "Apache-2.0",
   "type": "module",
-  "bin": {
-    "morse": "dist/cli.js"
-  },
   "main": "dist/index.js",
   "exports": {
     ".": "./dist/index.js"
@@ -39,10 +34,6 @@
   ],
   "engines": {
     "node": ">=22.13.0"
-  },
-  "dependencies": {
-    "@morse-ai/bus": "0.2.0",
-    "@morse-ai/registry": "0.2.0"
   },
   "scripts": {
     "build": "tsc --build",
