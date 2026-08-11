@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { runMcpServer } from "../mcp/server.js";
 import { buildPrompt } from "../prompt.js";
-import { resolveRoom, sanitizeRoom } from "@morse-ai/registry";
+import { renderAgent, resolveRoom, sanitizeRoom } from "@morse-ai/registry";
 import { pluginsEnabled } from "@morse-ai/registry/discovery";
 import {
   collectRoles,
@@ -18,10 +18,11 @@ import {
   roleTemplate,
   type RoleRejection,
 } from "@morse-ai/registry/discovery";
-import { BROADCAST, normalizeRecipients, waitForReply } from "@morse-ai/bus";
+import { BROADCAST, hintForAsk, normalizeRecipients, renderMessage, waitForReply } from "@morse-ai/bus";
 import { Morse } from "../morse.js";
 import { VERSION } from "../version.js";
 import { agentColor, bold, cyan, dim, formatMessage, relativeTime, safe, statusBadge, yellow } from "./format.js";
+import { exitFor, harnessPid, runAgentCommand, setStatusCommand } from "./agent.js";
 
 const HELP = `morse ${VERSION} — agent-to-agent communication for solo builders
 
@@ -37,6 +38,14 @@ const HELP = `morse ${VERSION} — agent-to-agent communication for solo builder
   morse init                              Write .mcp.json so plain \`claude\` sees morse
   morse reset [--force]                   Clear the room (asks first)
   morse mcp                               Run the MCP server (harnesses call this)
+
+Agent verbs (also available over MCP; --json for machine-readable output):
+  morse register / leave                  Join or depart, as $MORSE_AGENT or --as
+  morse inbox                             Unread mail, without blocking
+  morse wait [--thread <id>]              Block until mail arrives
+  morse reply <thread> <message>          Answer on a thread
+  morse thread <id> / morse history       Re-read a conversation, or the room
+  morse status set <state> [--note ...]   Publish what you are doing
 
 Options:
   --room <name>   Override the room (default: this git repo's name)
@@ -82,13 +91,17 @@ export async function main(argv: string[]): Promise<void> {
 
   const room = args.flags.room ? sanitizeRoom(String(args.flags.room)) : resolveRoom();
 
+  // The agent verb set: the same operations the MCP server exposes, as shell
+  // commands, for harnesses that cannot speak MCP.
+  if (await runAgentCommand(args.command, args, room)) return;
+
   switch (args.command) {
     case "mcp":
       return runMcpServer();
     case "join":
       return join_(args, room);
     case "roster":
-      return roster(room);
+      return roster(args, room);
     case "log":
       return log(args, room);
     case "send":
@@ -96,9 +109,12 @@ export async function main(argv: string[]): Promise<void> {
     case "ask":
       return ask(args, room);
     case "status":
-      return status(room);
+      // `morse status` has meant "one-line summary of the room" since 0.1.0.
+      // The write form is a subcommand rather than a flag so that stays true.
+      if (args.positional[0] === "set") return setStatusCommand(args, room);
+      return status(args, room);
     case "rooms":
-      return rooms();
+      return rooms(args);
     case "roles":
       return roles(args);
     case "prompt":
@@ -160,12 +176,16 @@ async function join_(args: Args, room: string): Promise<void> {
     ...(process.env.MORSE_PLUGINS ? { MORSE_PLUGINS: process.env.MORSE_PLUGINS } : {}),
   };
 
-  const systemPrompt = buildPrompt({ name, room, role });
+  // CLI transport: the agent drives morse with shell commands instead of MCP
+  // tools, which is the path for any harness `buildHarnessArgs` cannot wire.
+  const transport = args.flags.transport === "cli" ? "cli" : "mcp";
+  const systemPrompt = buildPrompt({ name, room, role, transport });
   const harness = String(args.flags.harness ?? "claude");
   const headless = args.passthrough.some((arg) => arg === "-p" || arg === "--print" || arg === "exec");
 
   const harnessArgs = buildHarnessArgs({
     harness,
+    transport,
     node: process.execPath,
     cliPath,
     serverEnv,
@@ -194,6 +214,12 @@ async function join_(args: Args, room: string): Promise<void> {
     env: { ...process.env, MORSE_AGENT: name, MORSE_ROOM: room },
   });
 
+  // Liveness should mean "the session exists", not "some 40ms morse process is
+  // still running". Under MCP the server's own pid answered that; a CLI-driven
+  // agent has no long-lived morse process, so the harness's pid is the honest
+  // answer for both.
+  if (child.pid) process.env.MORSE_HARNESS_PID = String(child.pid);
+
   child.on("error", (error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") {
       console.error(`\nCould not find \`${harness}\` on your PATH.`);
@@ -216,6 +242,8 @@ async function join_(args: Args, room: string): Promise<void> {
 
 interface HarnessInvocation {
   harness: string;
+  /** "cli" skips MCP wiring entirely; the agent uses shell commands. */
+  transport?: "mcp" | "cli";
   node: string;
   cliPath: string;
   serverEnv: Record<string, string>;
@@ -232,6 +260,15 @@ interface HarnessInvocation {
 export function buildHarnessArgs(options: HarnessInvocation): string[] {
   const { harness, node, cliPath, serverEnv, systemPrompt, passthrough, opening } = options;
   const kind = harnessKind(harness);
+
+  // Nothing to wire: the agent reaches morse through its shell, so the only
+  // thing it needs from us is the protocol and its identity in the environment.
+  if (options.transport === "cli") {
+    const args = kind === "codex" ? [...passthrough] : ["--append-system-prompt", systemPrompt, ...passthrough];
+    const brief = kind === "codex" && opening ? `${systemPrompt}\n\n---\n\n${opening}` : opening;
+    if (brief) args.push(brief);
+    return args;
+  }
 
   if (kind === "codex") {
     // Codex takes inline TOML config overrides rather than a JSON blob, and has
@@ -271,9 +308,17 @@ function harnessKind(harness: string): "claude" | "codex" {
 
 // -------------------------------------------------------------- inspection
 
-function roster(room: string): void {
+function roster(args: Args, room: string): void {
   const store = new Morse();
   const agents = store.roster(room);
+  if (args.flags.json) {
+    console.log(JSON.stringify({
+      room,
+      agents: agents.map((a) => ({ ...renderAgent(a), unread: store.unreadCount(room, a.name) })),
+      online: agents.filter((a) => a.online).length,
+    }, null, 2));
+    return;
+  }
   if (agents.length === 0) {
     console.log(`No agents in room ${cyan(room)} yet. Start one with ${bold("morse join <agent>")}.`);
     return;
@@ -295,12 +340,23 @@ function roster(room: string): void {
   }
 }
 
-function status(room: string): void {
+function status(args: Args, room: string): void {
   const store = new Morse();
   const agents = store.roster(room);
   const online = agents.filter((a) => a.online);
   const done = agents.filter((a) => a.status === "done");
   const blocked = agents.filter((a) => a.online && a.status === "blocked");
+  if (args.flags.json) {
+    console.log(JSON.stringify({
+      room,
+      online: online.length,
+      done: done.length,
+      blocked: blocked.map((a) => ({ name: a.name, note: a.statusNote })),
+      messages: store.maxMessageId(room),
+      agents: agents.map((a) => ({ name: a.name, status: a.status, online: a.online })),
+    }, null, 2));
+    return;
+  }
   console.log(
     `${bold(room)}: ${online.length} online, ${done.length} done, ${blocked.length} blocked, ` +
       `${store.maxMessageId(room)} messages`,
@@ -333,9 +389,13 @@ async function log(args: Args, room: string): Promise<void> {
   }
 }
 
-function rooms(): void {
+function rooms(args: Args): void {
   const store = new Morse();
   const all = store.listRooms();
+  if (args.flags.json) {
+    console.log(JSON.stringify({ rooms: all }, null, 2));
+    return;
+  }
   if (all.length === 0) {
     console.log("No rooms yet.");
     return;
@@ -463,6 +523,30 @@ function prompt(args: Args, room: string): void {
 // ------------------------------------------------------------ participation
 
 /**
+ * Who this invocation speaks as.
+ *
+ * An identity, if one was assigned — `send` and `ask` are agent verbs too, and
+ * a CLI-transport agent running `morse send` must speak as itself rather than
+ * as the human. Without one, you are the human, and the human is a first-class
+ * member of the room rather than a special case.
+ */
+function speaker(store: Morse, room: string, args: Args): string {
+  const assigned = process.env.MORSE_AGENT?.trim();
+  const requested = typeof args.flags.as === "string" ? args.flags.as.trim() : "";
+  const name = (assigned || requested).trim().toLowerCase();
+  if (!name) return operator(store, room);
+
+  store.register({
+    room,
+    name,
+    harness: process.env.MORSE_HARNESS ?? "cli",
+    pid: harnessPid(),
+    cwd: process.cwd(),
+  });
+  return name;
+}
+
+/**
  * The human is a first-class member of the room, not a special case: `operator`
  * registers like any agent so the six can address questions back at you.
  */
@@ -488,7 +572,7 @@ async function send(args: Args, room: string): Promise<void> {
     return;
   }
   const store = new Morse();
-  const me = operator(store, room);
+  const me = speaker(store, room, args);
   const recipients = normalizeRecipients(to.split(","));
   const unknown = await store.unknownRecipients(room, recipients);
   const message = store.send({ room, sender: me, to: recipients, body });
@@ -505,19 +589,34 @@ async function ask(args: Args, room: string): Promise<void> {
     return;
   }
   const store = new Morse();
-  const me = operator(store, room);
+  const me = speaker(store, room, args);
   const timeout = Number(args.flags.timeout ?? 120) * 1000;
   const sent = store.send({ room, sender: me, to: [to], body, kind: "ask" });
-  console.log(dim(`asked ${to}, waiting up to ${Math.round(timeout / 1000)}s…\n`));
+  console.error(dim(`asked ${to}, waiting up to ${Math.round(timeout / 1000)}s…`));
 
   const result = await waitForReply(store.bus, room, me, sent.threadId, sent.id, { timeoutMs: timeout });
-  for (const message of result.inbox) console.log(formatMessage(message), "\n");
-  if (result.reply) {
-    console.log(formatMessage(result.reply));
+
+  // The interrupted case is the one that loses mail if it is glossed over: the
+  // question is still unanswered *and* `inbox` has already advanced the cursor
+  // past everything it drained. Structured output makes that impossible to
+  // skim past, and the exit code lets a shell loop branch without parsing.
+  if (args.flags.json) {
+    console.log(JSON.stringify({
+      outcome: result.outcome,
+      thread_id: sent.threadId,
+      reply: result.reply ? renderMessage(result.reply) : undefined,
+      inbox: result.inbox.map(renderMessage),
+      hint: hintForAsk(result.outcome, sent.threadId),
+    }, null, 2));
   } else {
-    console.log(yellow(`No answer yet. Thread ${sent.threadId} is still open.`));
-    process.exitCode = 1;
+    for (const message of result.inbox) console.log(formatMessage(message), "\n");
+    if (result.reply) console.log(formatMessage(result.reply));
+    if (result.inbox.length > 0 && !result.reply) {
+      console.log(yellow(`\n${result.inbox.length} message(s) arrived instead, and are now marked read.`));
+    }
+    console.log(dim(hintForAsk(result.outcome, sent.threadId)));
   }
+  process.exitCode = exitFor(result.outcome);
 }
 
 // ------------------------------------------------------------------- setup
@@ -602,7 +701,7 @@ async function confirm(question: string): Promise<boolean> {
  * parses the agent name as the flag's argument and then reports that no agent
  * was given — the option and the positional cannot both survive otherwise.
  */
-const BOOLEAN_FLAGS = new Set(["no-plugins", "force", "help", "version", "follow"]);
+const BOOLEAN_FLAGS = new Set(["no-plugins", "force", "help", "version", "follow", "json", "no-registry"]);
 
 function parseArgs(argv: string[]): Args {
   const flags: Record<string, string | boolean> = {};
