@@ -26,7 +26,8 @@
   "main": "dist/index.js",
   "exports": {
     ".": "./dist/index.js",
-    "./discovery": "./dist/discovery.js"
+    "./discovery": "./dist/discovery.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -39,5 +40,8 @@
   "scripts": {
     "build": "tsc --build",
     "prepare": "npm run build"
+  },
+  "bin": {
+    "morse-registry": "dist/cli.js"
   }
 }

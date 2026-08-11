@@ -25,7 +25,8 @@
   "type": "module",
   "main": "dist/index.js",
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -38,5 +39,8 @@
   "scripts": {
     "build": "tsc --build",
     "prepare": "npm run build"
+  },
+  "bin": {
+    "morse-bus": "dist/cli.js"
   }
 }

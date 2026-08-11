@@ -115,3 +115,39 @@ jobs:
             echo "exactly one writer, which is the whole reason it is files."
             exit 1
           fi
+
+      # Guard 4 asserts independence from a manifest. This one executes it: an
+      # import npm never sees — a bare specifier that happens to resolve inside
+      # this workspace — passes the manifest check and fails here.
+      - name: Verify each sub-package works installed on its own
+        run: |
+          set -e
+          npm run build
+          work=$(mktemp -d)
+          for pkg in registry bus; do
+            name=$(node -p "require('./packages/$pkg/package.json').name")
+            bin=$(node -p "Object.keys(require('./packages/$pkg/package.json').bin)[0]")
+            tarball=$(cd "packages/$pkg" && npm pack --silent --pack-destination "$work")
+            mkdir -p "$work/$pkg" && (cd "$work/$pkg" && npm init -y >/dev/null && npm install --no-audit --no-fund "$work/$tarball" >/dev/null)
+            echo "installed $name alone; running $bin"
+            (cd "$work/$pkg" && ./node_modules/.bin/"$bin" --help > /dev/null)
+          done
+
+          # And a real round trip, with the bus explicitly told it has no registry.
+          export MORSE_HOME="$work/state" MORSE_DB="$work/state/m.db" MORSE_ROOM=solo
+          mkdir -p "$work/state"
+          (cd "$work/bus" && ./node_modules/.bin/morse-bus --no-registry join a > /dev/null)
+          (cd "$work/bus" && ./node_modules/.bin/morse-bus --no-registry join b > /dev/null)
+          (cd "$work/bus" && ./node_modules/.bin/morse-bus --no-registry send b a "hello" > /dev/null)
+          count=$(cd "$work/bus" && ./node_modules/.bin/morse-bus --no-registry inbox a | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).count")
+          if [ "$count" != "1" ]; then
+            echo "@morse-ai/bus could not deliver a message on its own (count=$count)"
+            exit 1
+          fi
+          (cd "$work/registry" && ./node_modules/.bin/morse-registry publish a --role Tester > /dev/null)
+          agents=$(cd "$work/registry" && ./node_modules/.bin/morse-registry list | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).agents.length")
+          if [ "$agents" != "1" ]; then
+            echo "@morse-ai/registry could not record an agent on its own (agents=$agents)"
+            exit 1
+          fi
+          rm -rf "$work"
