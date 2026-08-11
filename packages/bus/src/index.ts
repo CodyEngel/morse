@@ -19,3 +19,13 @@ export {
 export { unregistered, type Registry, type Status } from "./registry.js";
 export { waitForInbox, waitForReply, type AskResult, type AskOutcome, type WaitOptions } from "./wait.js";
 export { openDb, dbPath, resetDb, now } from "./db.js";
+export {
+  BUS_TOOLS,
+  busHandler,
+  renderMessage,
+  requireString,
+  toStringArray,
+  hintForAsk,
+  type ToolDefinition,
+  type ToolSession,
+} from "./mcp.js";

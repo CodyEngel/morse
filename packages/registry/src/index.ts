@@ -19,3 +19,4 @@ export {
   type AgentStatus,
   type PublishInput,
 } from "./registry.js";
+export { REGISTRY_TOOLS, registryHandler, renderAgent } from "./mcp.js";

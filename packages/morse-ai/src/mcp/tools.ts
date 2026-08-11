@@ -1,5 +1,17 @@
-import type { ToolDefinition } from "./rpc.js";
+import type { ToolDefinition } from "@morse-ai/bus";
 
+/**
+ * The tools morse-ai owns, because each one needs both halves at once.
+ *
+ * `morse_register` publishes a capability to the registry *and* opens a mailbox
+ * on the bus. `morse_ask` and `morse_wait` move messages *and* answer with
+ * directory state — the roster when an ask names nobody who exists, every
+ * agent's status when a wait comes back empty. Neither sub-package could own
+ * them without depending on the other.
+ *
+ * The other seven live with the package that implements them: see
+ * `REGISTRY_TOOLS` and `BUS_TOOLS`.
+ */
 const str = (description: string) => ({ type: "string", description });
 const strArray = (description: string) => ({ type: "array", items: { type: "string" }, description });
 
@@ -7,11 +19,7 @@ function schema(properties: Record<string, unknown>, required: string[] = []): R
   return { type: "object", properties, required, additionalProperties: false };
 }
 
-/**
- * Tool descriptions are the protocol documentation the model actually reads, so
- * they say when to reach for each one, not just what it does.
- */
-export const TOOLS: ToolDefinition[] = [
+export const COMPOSED_TOOLS: ToolDefinition[] = [
   {
     name: "morse_register",
     title: "Join the room",
@@ -23,29 +31,6 @@ export const TOOLS: ToolDefinition[] = [
       description: str("What you own and what you should be asked about (1-3 sentences)."),
       skills: strArray("Short capability tags, e.g. ['sql','api-design','performance']."),
     }),
-  },
-  {
-    name: "morse_roster",
-    title: "Who is here",
-    description:
-      "List everyone in the room with their expertise, current status, and whether they are online right now. Use this before sending, to pick the right teammate by capability rather than guessing at names.",
-    inputSchema: schema({}),
-  },
-  {
-    name: "morse_send",
-    title: "Send a message",
-    description:
-      "Send a message without blocking. Use for handoffs, findings, and status you do not need an answer to. Set `to` to one or more agent names, or ['*'] to broadcast to the whole room. If you need an answer before you can continue, use morse_ask instead.",
-    inputSchema: schema(
-      {
-        to: strArray("Recipient agent names, or ['*'] to broadcast."),
-        body: str("The message. Be specific and self-contained; the recipient does not share your context."),
-        subject: str("Optional one-line summary."),
-        thread_id: str("Continue an existing thread. Omit to start a new one."),
-        reply_to: { type: "number", description: "Message id this responds to." },
-      },
-      ["to", "body"],
-    ),
   },
   {
     name: "morse_ask",
@@ -66,20 +51,6 @@ export const TOOLS: ToolDefinition[] = [
     ),
   },
   {
-    name: "morse_reply",
-    title: "Reply on a thread",
-    description:
-      "Answer a message on its thread. This addresses the person who spoke last on that thread, so it is the correct way to respond to a morse_ask that is blocking a teammate. Answer the question that was asked; if you cannot, say so explicitly rather than staying silent.",
-    inputSchema: schema(
-      {
-        thread_id: str("The thread to reply on."),
-        body: str("Your answer."),
-        to: strArray("Override the recipients. Defaults to whoever spoke last on the thread."),
-      },
-      ["thread_id", "body"],
-    ),
-  },
-  {
     name: "morse_wait",
     title: "Wait for messages",
     description:
@@ -88,43 +59,5 @@ export const TOOLS: ToolDefinition[] = [
       timeout_seconds: { type: "number", description: "How long to park. Default 50." },
       thread_id: str("Only return messages on this thread. Use to resume an interrupted morse_ask."),
     }),
-  },
-  {
-    name: "morse_inbox",
-    title: "Check messages without waiting",
-    description:
-      "Return any unread messages immediately and do not block. Use this to check in mid-task; use morse_wait when you have nothing else to do.",
-    inputSchema: schema({}),
-  },
-  {
-    name: "morse_status",
-    title: "Publish your status",
-    description:
-      "Tell the room what you are doing. Set 'working' when you pick something up, 'blocked' when you are waiting on someone (say who in the note), and 'done' when your part is finished. Teammates use this to see whether the group has converged, so keep it current.",
-    inputSchema: schema(
-      {
-        status: {
-          type: "string",
-          enum: ["idle", "working", "blocked", "done"],
-          description: "Your current state.",
-        },
-        note: str("One line of detail, e.g. 'waiting on backend for the query contract'."),
-      },
-      ["status"],
-    ),
-  },
-  {
-    name: "morse_thread",
-    title: "Read a thread",
-    description:
-      "Read the full history of one thread. Use it to recover context you have lost, or to catch up on a conversation you were added to partway through.",
-    inputSchema: schema({ thread_id: str("The thread to read.") }, ["thread_id"]),
-  },
-  {
-    name: "morse_history",
-    title: "Read the room log",
-    description:
-      "Read recent traffic in the room, including messages not addressed to you. Use it to catch up after joining late or to see what the group has already settled.",
-    inputSchema: schema({ limit: { type: "number", description: "How many messages. Default 40." } }),
   },
 ];
