@@ -16,21 +16,30 @@ Node 22.13 or newer. That floor is not arbitrary — morse uses the built-in `no
 
 ## Architecture
 
-Roughly in dependency order:
+Three packages in one workspace. `packages/morse-ai` is the product; the other
+two are libraries under it, and **neither depends on the other**.
 
-| File | Responsibility |
+| Package | Responsibility |
 | --- | --- |
-| `src/db.ts` | SQLite handle, schema, migrations, file permissions |
-| `src/store.ts` | All data access. Delivery, cursors, presence |
-| `src/wait.ts` | The blocking primitives: `waitForInbox`, `waitForReply` |
-| `src/mcp/rpc.ts` | Minimal MCP stdio transport (JSON-RPC over stdin/stdout) |
-| `src/mcp/tools.ts` | Tool schemas and descriptions |
-| `src/mcp/server.ts` | Tool handlers. Knows nothing about roles |
-| `src/roles.ts` | The role-file contract: lookup, parsing, validation |
-| `src/prompt.ts` | The protocol prompt handed to a joined agent |
-| `src/cli/` | Human-facing commands and terminal rendering |
+| `packages/bus` | `db.ts` SQLite handle, schema, permissions · `bus.ts` messages, delivery, cursors · `wait.ts` the blocking primitives · `registry.ts` **the four-method port** · `mcp.ts` its five tools · `cli.ts` `morse-bus` |
+| `packages/registry` | `registry.ts` file-backed agent records, presence, status · `roles.ts` / `plugins.ts` / `toml.ts` the role-file contract · `room.ts` room naming and sanitising · `mcp.ts` its two tools · `cli.ts` `morse-registry` |
+| `packages/morse-ai` | `morse.ts` composition and the 0.2 import · `mcp/server.ts` the composed server and its three tools · `prompt.ts` the protocol prompt · `cli/` the `morse` command |
 
-Two rules keep the layers honest:
+Four rules keep the layers honest:
+
+**Only the message log gets a database.** Every agent record has exactly one
+writer — its own process — so the registry is files. `@morse-ai/registry` must
+never import `node:sqlite`; CI fails if it does. The log needs SQLite for total
+order, not for concurrency: `inbox` is `id > cursor`, and that ordering has to
+hold across independent processes.
+
+**The bus talks to a registry through an interface it declares itself.** Four
+methods, no more. If you find yourself wanting a fifth, the operation probably
+belongs in `morse-ai`, where both halves are in scope — that is why
+`morse_register`, `morse_ask` and `morse_wait` live there. The suite runs the
+bus against a stub carrying exactly those four keys, and CI installs each
+sub-package alone to prove the independence rather than assert it.
+
 
 **The bus stays policy-free.** Morse ships no roles and the MCP server has no concept of one — `morse join` resolves a role file and passes the result through the environment. Anything opinionated about what an agent *is* belongs in a role file or a separate package.
 
@@ -64,14 +73,29 @@ Match the surrounding code. Comments explain *why* something is the way it is, e
 
 Maintainer only:
 
+Versions are **lockstep**: all three packages always carry the same number and
+always publish together, even when a release touches only one of them.
+`morse-ai` pins the other two exactly, so a published `morse-ai` can only
+resolve versions it was tested against.
+
 ```bash
 npm test
-npm version <patch|minor|major>   # bumps, commits and tags
+npm version <patch|minor|major> --workspaces --include-workspace-root
+git commit -am "Release vX.Y.Z" && git tag vX.Y.Z
 git push --follow-tags            # the tag triggers .github/workflows/release.yml
 ```
 
-That is the whole process. `src/version.ts` reads from `package.json`, so there
-is nothing else to bump.
+Bump `morse-ai`'s two `dependencies` entries to the same number in the same
+commit. The release workflow checks every package against the tag *and* checks
+those pins, and refuses to publish if any of them disagree — so a missed bump
+is a red build rather than a broken install.
+
+`version.ts` reads from each package's own `package.json`, so there is nothing
+else to bump.
+
+Publishing order is bus and registry first, then `morse-ai`, and it is
+irreversible: npm burns a version permanently even after an unpublish, so if the
+last publish fails the recovery is a patch bump of all three rather than a retry.
 
 If commits are signed through an agent that `npm version` cannot reach — 1Password's,
 for instance — its internal `git commit` fails. `git -c` does not help, because npm

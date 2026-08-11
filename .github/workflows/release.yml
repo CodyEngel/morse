@@ -3,6 +3,10 @@ name: Release
 # Publishing from CI rather than a laptop is what makes provenance possible:
 # npm derives the attestation from the runner's OIDC identity, so there is no
 # provider to attest to when the same command runs locally.
+#
+# Each package is configured as a trusted publisher pointing at this file by
+# name. Renaming this workflow means reconfiguring all three on npmjs.com, and
+# nothing here will tell you that until a release fails.
 on:
   push:
     tags: ["v*"]
@@ -50,21 +54,63 @@ jobs:
 
       - run: npm ci
 
-      # A tag that disagrees with package.json would publish a version nobody
-      # can trace back to a commit.
-      - name: Check the tag matches package.json
+      # Versions are lockstep by rule, not by convention: all three packages
+      # always carry the same number and always publish together. Checking every
+      # one against the tag is what makes that true rather than aspirational —
+      # a hand-bump that missed a package would otherwise publish a morse-ai
+      # that resolves a version of the bus nobody tested it against.
+      - name: Check every package version matches the tag
         run: |
           TAG="${GITHUB_REF_NAME#v}"
-          PKG=$(node -p "require('./package.json').version")
-          if [ "$TAG" != "$PKG" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG"; exit 1
-          fi
+          fail=0
+          for pkg in packages/*/; do
+            name=$(node -p "require('./$pkg/package.json').name")
+            version=$(node -p "require('./$pkg/package.json').version")
+            if [ "$version" != "$TAG" ]; then
+              echo "$name is $version, tag is $TAG"
+              fail=1
+            fi
+          done
+          # And morse-ai must pin the other two exactly, at that same version,
+          # so a published morse-ai can only ever resolve what it was tested with.
+          deps=$(node -p "JSON.stringify(require('./packages/morse-ai/package.json').dependencies)")
+          for dep in "@morse-ai/bus" "@morse-ai/registry"; do
+            pinned=$(node -p "require('./packages/morse-ai/package.json').dependencies['$dep']")
+            if [ "$pinned" != "$TAG" ]; then
+              echo "morse-ai pins $dep at '$pinned', expected exactly '$TAG' (deps: $deps)"
+              fail=1
+            fi
+          done
+          [ "$fail" = "0" ] || exit 1
+          echo "all three at $TAG, pinned exactly"
 
       # No NODE_AUTH_TOKEN: npm trusts this workflow's OIDC identity, configured
-      # as a trusted publisher on the package. Provenance comes with it, so the
-      # flag is redundant here but harmless and explicit.
+      # as a trusted publisher on each package. Provenance comes with it.
       #
-      # Falling back to a token instead? Set an NPM_TOKEN secret and add:
-      #   env:
-      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - run: npm publish --provenance
+      # Order matters and is irreversible. If morse-ai fails after the other two
+      # have gone out, those versions exist and can never be republished — npm
+      # burns a version permanently, even after an unpublish. Recovery is a
+      # patch bump of all three, not a retry of this job.
+      #
+      # The sub-packages first, so morse-ai's exact pins are resolvable the
+      # moment it lands. They have no dependency on each other, so their
+      # relative order is free.
+      - name: Publish @morse-ai/bus
+        run: npm publish -w @morse-ai/bus --provenance --access public
+
+      - name: Publish @morse-ai/registry
+        run: npm publish -w @morse-ai/registry --provenance --access public
+
+      - name: Publish morse-ai
+        run: npm publish -w morse-ai --provenance --access public
+
+      # A stub `latest` from the bootstrap publish is the normal starting state
+      # for the two new packages; this is where it stops being true. Worth
+      # printing rather than assuming, since `latest` is what `npm install`
+      # resolves and nothing else in this job would notice it pointing at 0.0.0.
+      - name: Report what `latest` now resolves to
+        run: |
+          for pkg in packages/*/; do
+            name=$(node -p "require('./$pkg/package.json').name")
+            echo "$name -> $(npm view "$name" dist-tags.latest)"
+          done

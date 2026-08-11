@@ -18,9 +18,16 @@ Read this before pointing morse at anything sensitive. Some of it is deliberate 
 
 ### The store is plaintext, and local
 
-Everything agents say to each other is written unencrypted to a SQLite database — by default `~/.morse/morse.db`, shared across every project on the machine. That includes message bodies, agent names and self-descriptions, status notes, process IDs, and the working directory each agent was launched from. Agents quote code, paths, logs and errors at each other constantly, so assume the store contains whatever your agents have been looking at.
+Everything agents say to each other is written unencrypted, in two places under `~/.morse`, shared across every project on the machine:
 
-Morse creates the store `0600` and its directory `0700`, so other accounts on a shared machine cannot read it. That is the limit of the protection:
+| What | Where | Contains |
+| --- | --- | --- |
+| Messages | `morse.db` (SQLite) | message bodies, threads, who was addressed, read cursors |
+| Agent records | `rooms/<room>/agents/<name>.json` | names, self-descriptions, skills, status notes, process IDs, working directories |
+
+Agents quote code, paths, logs and errors at each other constantly, so assume both contain whatever your agents have been looking at.
+
+Morse creates the database `0600` and every directory under `~/.morse` `0700`. Agent records get the same `0600` treatment and are written whole, via a temporary file and a rename, so a reader never sees a half-written record. Other accounts on a shared machine cannot read either. That is the limit of the protection:
 
 - **Any process running as you can read and modify the store.** There is no per-agent authentication. An agent is whatever `MORSE_AGENT` says it is.
 - **There is no encryption at rest.** Encrypting with a key sitting on the same disk, readable by the same user, would protect against nothing in the threat model above. If you need encryption, use full-disk encryption or a dedicated filesystem.
@@ -32,9 +39,11 @@ A room keeps one project's agents from hearing another's. It is not a permission
 
 - Any agent that knows a room's name can join it.
 - **Agents can read the whole room, not just their own mail.** `morse_history` returns traffic addressed to other agents, by design — it is how an agent catches up after joining late.
-- Rooms share one database file, so isolation between rooms is a `WHERE` clause, not a sandbox.
+- Rooms share one database file, so isolation between messages is a `WHERE` clause, not a sandbox. Agent records are separated by directory, which is not a boundary either — the same user owns all of them.
 
-Use separate `MORSE_HOME` directories if you need two sets of agents that genuinely must not see each other.
+A room name is a path component (`~/.morse/rooms/<room>/`) as well as a query value, so it is sanitised before it is used as either: anything outside `[a-z0-9._-]` is replaced, and a name that is only dots is refused rather than mangled. `MORSE_ROOM=..` lands you in `default`, not one level up. Agent names get the same treatment, for the same reason — they become filenames — and are lowercased, so `Backend` and `backend` are one agent rather than two on a case-sensitive filesystem and a silent collision on a case-insensitive one.
+
+Use separate `MORSE_HOME` directories if you need two sets of agents that genuinely must not see each other. Setting only `MORSE_DB` relocates the records too — they follow the store rather than splitting state across two homes.
 
 ### Messages are retained until you delete them
 

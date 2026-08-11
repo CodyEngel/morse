@@ -126,11 +126,27 @@ morse reset [--force]                   Clear the room (asks first)
 morse mcp                               Run the MCP server
 ```
 
+Agents get the same ten operations as verbs, so a harness that cannot speak MCP
+can still take part. `--json` on any read makes the output machine-readable.
+
+```
+morse register / leave                  Join or depart, as $MORSE_AGENT or --as
+morse inbox                             Unread mail, without blocking
+morse wait [--thread <id>]              Block until mail arrives
+morse reply <thread> <message>          Answer on a thread
+morse thread <id> / morse history       Re-read a conversation, or the room
+morse status set <state> [--note ...]   Publish what you are doing
+```
+
+`morse ask` exits `0` when answered, `2` when other mail arrived first, and `1`
+on a timeout. The `2` is worth handling: your question is still open *and* the
+messages it hands back have already been marked read.
+
 `--room <name>` overrides the room on any command.
 
 ## Rooms
 
-The store is machine-wide (`~/.morse/morse.db`), and rooms keep projects apart. The room defaults to your git repository's name, so agents started in the same project find each other and agents in a different project do not. Override with `--room` or `$MORSE_ROOM`.
+State is machine-wide under `~/.morse`, and rooms keep projects apart. The room defaults to your git repository's name, so agents started in the same project find each other and agents in a different project do not. Override with `--room` or `$MORSE_ROOM`.
 
 ## Roles are not morse's job
 
@@ -251,6 +267,41 @@ frontend     working    Frontend Engineer         claude-code
 | `MORSE_PLUGINS` | on | Set `0`/`off` to read only `.morse/roles`, never other tools' agent folders. |
 
 Claude Code's default MCP tool timeout is effectively unbounded, so a longer `MORSE_WAIT_SECONDS` is safe there. The 50-second default is chosen to stay inside stricter harnesses.
+
+## Packages
+
+Morse is three packages. Most people want `morse-ai`, which is the product: the
+`morse` CLI, the composed MCP server, and the protocol prompt.
+
+| Package | What it is | Depends on |
+| --- | --- | --- |
+| [`morse-ai`](https://www.npmjs.com/package/morse-ai) | The product. `morse` | both |
+| [`@morse-ai/bus`](https://www.npmjs.com/package/@morse-ai/bus) | Messages, delivery, blocking waits. `morse-bus` | nothing |
+| [`@morse-ai/registry`](https://www.npmjs.com/package/@morse-ai/registry) | Who exists, what they can do, whether they are here. `morse-registry` | nothing |
+
+The two halves do not depend on each other. The bus declares the four methods it
+needs from a registry — `heartbeat`, `names`, `status`, `setStatus` — and takes
+an implementation at construction, so you can supply your own:
+
+```js
+import { Bus, unregistered } from "@morse-ai/bus";
+import { FileRegistry } from "@morse-ai/registry";
+
+const bus = new Bus({ registry: new FileRegistry() });  // the default
+const bus = new Bus({ registry: myOwnThing });          // anything with the four
+const bus = new Bus({ registry: unregistered });        // deliberately none
+```
+
+`registry` is required rather than optional, so running without one is something
+you asked for rather than defaulted into. Without it you lose presence,
+unknown-recipient warnings and status; delivery, threading, cursors and
+ask/interrupt keep working.
+
+Only the message log needs a database. Every agent record has exactly one writer
+— its own process — so the registry is plain files, one JSON record per agent,
+and `last_seen` is the file's mtime. The log needs SQLite for a different reason
+than concurrency: `inbox` is `id > cursor`, and that needs a total order across
+independent processes.
 
 ## Security and data
 
