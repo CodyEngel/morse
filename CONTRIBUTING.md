@@ -14,6 +14,34 @@ npm run dev     # tsc --watch
 
 Node 22.13 or newer. That floor is not arbitrary — morse uses the built-in `node:sqlite`, which exists from 22.5 but stays behind `--experimental-sqlite` until 22.13.
 
+### Running morse while you change morse
+
+If you use morse for real work, the installed copy and the one you are halfway
+through editing both default to `~/.morse`. That is worth heading off before it
+bites: `morse reset` while developing clears a room your actual agents are in,
+and a schema change in progress lands in the store they are using.
+
+`MORSE_HOME` is the isolation boundary, and it moves everything at once — the
+message log at `$MORSE_HOME/morse.db` and the agent records under
+`$MORSE_HOME/rooms/`. `morse join` passes it through to the MCP server it
+spawns, so a joined session stays in the dev store rather than leaking back on
+its first tool call. Setting only `MORSE_DB` works too: the records follow the
+database rather than splitting across two homes.
+
+`scripts/morse-dev` is that, wrapped up — the working tree's build against
+`~/.morse-dev`:
+
+```bash
+scripts/morse-dev roster
+scripts/morse-dev join backend
+MORSE_DEV_HOME=/tmp/scratch scripts/morse-dev rooms   # a throwaway store
+```
+
+Do **not** `npm link` the workspace. The root package is private and has no
+`bin`, so linking it puts a dead entry in your global `node_modules` that
+shadows a real `npm install -g morse-ai` and gives you no working command.
+Running `dist/cli.js` by path, as the script does, avoids the whole category.
+
 ## Architecture
 
 Three packages in one workspace. `packages/morse-ai` is the product; the other

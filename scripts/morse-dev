@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Run the working tree's morse against a separate store.
+#
+# The point is not the binary — it is the state. Production morse and a morse
+# you are halfway through changing both default to ~/.morse, which means a
+# `morse reset` while developing wipes a real room, and a schema change in
+# progress lands in the database your actual agents are using.
+#
+# MORSE_HOME moves both halves at once: the message log and the agent records
+# sit under it, and `morse join` passes it through to the MCP server it spawns,
+# so a joined session stays in the dev store too.
+#
+#   scripts/morse-dev roster
+#   scripts/morse-dev join backend
+#   MORSE_DEV_HOME=/tmp/scratch scripts/morse-dev rooms
+#
+# Put it on your PATH if you use it often:
+#   ln -s ~/Dev/morse/scripts/morse-dev ~/.local/bin/morse-dev
+set -euo pipefail
+
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cli="$here/packages/morse-ai/dist/cli.js"
+
+if [ ! -f "$cli" ]; then
+  echo "morse-dev: $cli does not exist — run 'npm run build' first." >&2
+  exit 1
+fi
+
+# This runs whatever is in dist/ and does not check whether that is current.
+# Two attempts at a staleness warning both cried wolf: `tsc --build` compares
+# content rather than timestamps, so touching a file rebuilds nothing and leaves
+# the source permanently "newer" than the output — and .tsbuildinfo is no better
+# an anchor, since it is not rewritten on a no-op build either. A warning that
+# fires after every successful build is worse than no warning.
+#
+# Keep `npm run dev` (tsc --watch) running, or build before you care.
+
+export MORSE_HOME="${MORSE_DEV_HOME:-$HOME/.morse-dev}"
+exec node "$cli" "$@"
