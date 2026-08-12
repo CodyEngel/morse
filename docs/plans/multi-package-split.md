@@ -1,6 +1,8 @@
 # Splitting morse into three packages
 
-Status: **draft for review, v5.** Nothing here is implemented.
+Status: **implemented and shipped as 0.3.0.** Kept as the record of why, with
+[what changed in the building](#what-the-building-changed) noting where the
+result differs from the plan.
 
 Diagram: [`multi-package-split.excalidraw`](./multi-package-split.excalidraw) —
 drop it on excalidraw.com or open it with the VS Code / Obsidian plugin.
@@ -499,8 +501,15 @@ be independently operable.
 | Tool | Contributed by |
 | --- | --- |
 | `morse_roster`, `morse_status` | registry |
-| `morse_send`, `morse_ask`, `morse_reply`, `morse_wait`, `morse_inbox`, `morse_thread`, `morse_history` | bus |
-| `morse_register` | **morse-ai** |
+| `morse_send`, `morse_reply`, `morse_inbox`, `morse_thread`, `morse_history` | bus |
+| `morse_register`, `morse_ask`, `morse_wait` | **morse-ai** |
+
+> Amended from the 1/2/7 split this section originally proposed. `morse_ask` and
+> `morse_wait` are message operations and should have been the bus's, but both
+> answer with directory state — the roster when an ask names nobody who exists,
+> every agent's status when a wait comes back empty — and the four-method port
+> cannot supply either. Widening it to fit two tools would have cost the thing
+> the split was for.
 
 `morse_register` moves up to `morse-ai` because it is inherently both halves —
 `registry.publish()` then `bus.join()` — and neither sub-package can own it without
@@ -751,3 +760,43 @@ Two things to know:
 `morse prompt`, which never touch the database. If `morse-ai` defers its bus import,
 those commands stop loading a storage engine altogether. Not a decision, just something
 the split makes available.
+
+---
+
+## What the building changed
+
+Four places where the shipped result differs from what this plan proposed. Each
+is recorded here rather than edited away, because the reasoning that produced
+the original is the reason the change was recognisable as necessary.
+
+**The port is four methods, not three.** `morse_wait` on a thread captures the
+agent's status, sets `blocked`, and restores the original if no reply lands
+(`server.ts`). A write-only interface cannot do that, and dropping the restore
+would let a resuming agent read as `idle` while the room decides whether it has
+converged.
+
+**Two of those four are for the standalone bus only.** `morse_ask` and
+`morse_wait` then moved to morse-ai — see the amendment above — and took the
+only composed-path consumer of `status`/`setStatus` with them. morse-ai holds a
+concrete registry and calls it directly. They stay on the interface because
+`morse-bus ask` still needs to mark itself blocked, which is the whole point of
+the package being usable alone; a registry that only ever backs morse-ai can
+no-op both and lose nothing. Two decisions that were each right in isolation,
+with an interaction neither anticipated.
+
+**`cursors` landed in phase 2 rather than 3.** Forced: the read cursor needs
+somewhere to live the moment agent records become files.
+
+**Three CI guards were pulled forward** from the packaging phase to the phase
+before the file-backed registry — zero dependencies, no database in the
+registry, and each sub-package installable alone. All three protect properties
+that decay silently, and the phase most likely to decay them was the next one.
+
+### What the plan got right that mattered
+
+The two predictions that earned their place. First, that phase 2's existing
+tests were the real acceptance criterion, and that needing to *edit* one would
+be the signal to stop — none needed editing. Second, that "trigger the legacy
+import on reads, not just writes" was worth stating explicitly: the first
+implementation hung it off `register`, passed the roster test, and still
+reported zero unread against a mailbox seven messages behind.

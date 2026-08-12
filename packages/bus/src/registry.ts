@@ -32,10 +32,27 @@ export interface Registry {
    */
   names(room: string): string[] | Promise<string[]>;
 
-  /** This agent's current state, so a blocking wait can put back what it displaced. */
+  /**
+   * This agent's current state, so a blocking wait can put back what it
+   * displaced, and the state it should be moved to while blocked.
+   *
+   * These two are here for the *standalone* bus, not for morse-ai. They were
+   * added for `morse_wait` on a thread, which captures a status, sets
+   * `blocked`, and restores the original if no reply lands — and then that tool
+   * moved to morse-ai, because it also answers with roster data this interface
+   * deliberately cannot supply. morse-ai holds a concrete registry and calls it
+   * directly, so the composed server no longer reaches for either of these.
+   *
+   * They stay because `morse-bus ask` is a real consumer: a bus used on its own
+   * still has to be able to say it is blocked, and that is the whole point of
+   * the package being independently usable. Dropping them would shrink the
+   * interface by making the standalone story worse.
+   *
+   * The practical consequence for anyone implementing this: a registry that
+   * only ever backs morse-ai can leave both as no-ops and lose nothing.
+   */
   status(room: string, name: string): Status | undefined | Promise<Status | undefined>;
 
-  /** Publish coarse work state. Called when a wait blocks, and when it unblocks. */
   setStatus(
     room: string,
     name: string,

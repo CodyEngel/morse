@@ -89,6 +89,58 @@ test("a full round trip needs nothing beyond the port", async () => {
   assert.deepEqual([...used].sort(), ["heartbeat", "names", "setStatus", "status"]);
 });
 
+/**
+ * Not all four methods are needed by the same consumer, and it is worth being
+ * able to tell which is which.
+ *
+ * `status` and `setStatus` were added for `morse_wait` on a thread. That tool
+ * then moved to morse-ai, which holds a concrete registry and calls it
+ * directly — so the composed server no longer touches either. They stay for the
+ * standalone bus, where `morse-bus ask` still has to be able to say it is
+ * blocked.
+ *
+ * The distinction matters to anyone implementing this interface: a registry
+ * that only ever backs morse-ai can no-op both and lose nothing.
+ */
+test("delivery needs only heartbeat and names; status is for standalone use", async () => {
+  bus.join(ROOM, "a");
+  bus.join(ROOM, "b");
+  stub.calls.length = 0;
+
+  // Everything the message path does, with no status involved anywhere.
+  bus.send({ room: ROOM, sender: "a", to: ["b"], body: "one" });
+  await bus.unknownRecipients(ROOM, ["b"]);
+  bus.inbox(ROOM, "b");
+  bus.thread(ROOM, bus.history(ROOM)[0].threadId);
+  await bus.heartbeat(ROOM, "a");
+
+  const used = new Set(stub.calls.map((c) => c[0]));
+  assert.ok(!used.has("status"), "delivery must not need to read a status");
+  assert.ok(!used.has("setStatus"), "nor write one");
+  assert.deepEqual([...used].sort(), ["heartbeat", "names"]);
+});
+
+test("a registry that no-ops status still delivers everything", async () => {
+  // The shape a morse-ai-only registry can legitimately take.
+  const calls = [];
+  const partial = {
+    heartbeat: (room, name) => calls.push(["heartbeat", room, name]),
+    names: () => ["a", "b"],
+    status: () => undefined,
+    setStatus: () => {},
+  };
+  const solo = new Bus({ registry: partial });
+  solo.clearRoom("partial-room");
+  solo.join("partial-room", "a");
+  solo.join("partial-room", "b");
+
+  solo.send({ room: "partial-room", sender: "a", to: ["b"], body: "delivered" });
+  assert.equal(solo.inbox("partial-room", "b").length, 1);
+  assert.deepEqual(await solo.unknownRecipients("partial-room", ["ghost"]), ["ghost"]);
+  assert.equal(await solo.status("partial-room", "a"), undefined, "and reads back as unknown");
+  assert.ok(calls.length === 0 || calls.every((c) => c[0] === "heartbeat"));
+});
+
 test("the wait loop heartbeats through the port and nothing else", async () => {
   bus.join(ROOM, "a");
   stub.calls.length = 0;
