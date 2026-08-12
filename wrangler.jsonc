@@ -1,0 +1,16 @@
+{
+  // The docs site at https://morse-ai.com: an assets-only Worker, no server
+  // code. `npm run docs:build` produces ./site/dist; this deploys it.
+  //
+  // The custom domain is attached to this Worker in the Cloudflare dashboard
+  // rather than declared here, so a deploy cannot fail on a zone this config
+  // cannot see.
+  "name": "morse-docs",
+  "compatibility_date": "2026-08-12",
+  "assets": {
+    "directory": "./site/dist",
+    // Astro builds directory-index pages, so an unknown path should get the
+    // site's own 404 rather than Cloudflare's.
+    "not_found_handling": "404-page"
+  }
+}

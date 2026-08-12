@@ -7,6 +7,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Docs site: Astro's generated types, and wrangler's local state
+site/.astro/
+.wrangler/
+
 # Test and coverage artifacts
 coverage/
 .nyc_output/

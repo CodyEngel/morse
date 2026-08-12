@@ -73,6 +73,42 @@ sub-package alone to prove the independence rather than assert it.
 
 **Escaping happens at the boundary.** The store keeps exactly what an agent wrote. `src/cli/format.ts` escapes control characters on the way to a terminal. Do not move that into the store, and do not print agent-authored text without it.
 
+## Documentation
+
+The reference documentation is a site, not the README. It lives in `site/` —
+[Astro](https://astro.build) with [Starlight](https://starlight.astro.build) —
+and is published to [morse-ai.com](https://morse-ai.com) as static assets on a
+Cloudflare Worker. The README keeps the banner, the description, the diagram,
+the quick start, the security warning, and links; everything else is a page.
+
+```bash
+npm run docs:dev      # local preview at http://localhost:4321
+npm run docs:build    # production build, and the internal link check
+npm run docs:deploy   # build, then wrangler deploy (maintainer)
+```
+
+Those scripts install `site/`'s dependencies first, so a fresh clone needs no
+extra step. `site/` is a standalone npm project on purpose: it sits outside the
+workspace `packages/*` glob, so `npm ci` at the root neither installs Astro nor
+gives a docs dependency any route into a published package. Its only
+dependencies are `astro` and `@astrojs/starlight`, and it should stay that way.
+
+**A change that alters what a page says belongs in the same pull request as the
+change itself.** The README used to be the only surface, so drift was visible in
+review; now the detail lives in the site, and a page nobody updated is worse than
+a page that does not exist, because it is believed. `.github/workflows/docs.yml`
+fails a pull request that touches a documented surface — the CLI, the MCP tools,
+the environment variables, the role contract, `SECURITY.md` — without touching
+`site/src/content/docs/`. When the change genuinely is not described anywhere on
+the site, put `docs: n/a` in the pull request body.
+
+[AGENTS.md](AGENTS.md) has the surface-to-page table and the site's conventions,
+and applies to anyone working here, agent or not.
+
+Deploys happen from `main` through `.github/workflows/docs.yml`, which needs a
+`CLOUDFLARE_API_TOKEN` secret with Workers deploy permission. `wrangler.jsonc` at
+the repository root describes the Worker: assets only, no server code.
+
 ## Dependencies
 
 Morse has zero runtime dependencies and should keep it that way. It is a coordination tool people install globally; a dependency here is a dependency in everyone's agent setup. TypeScript and `@types/node` are the only dev dependencies.

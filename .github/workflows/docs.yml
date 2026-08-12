@@ -1,0 +1,123 @@
+name: Docs
+
+# The documentation site at https://morse-ai.com.
+#
+# `site/` is a separate npm project on purpose — it is deliberately outside the
+# workspace `packages/*` glob, so `npm ci` at the root neither installs Astro
+# nor lets a docs dependency reach the published packages. Every step here
+# therefore runs with `working-directory: site`.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "wrangler.jsonc"
+      - ".github/workflows/docs.yml"
+  # No path filter on pull requests, and that is the point: the sync job below
+  # has to run precisely when a PR changed a documented surface and did *not*
+  # touch site/.
+  pull_request:
+
+# Two pushes to main in quick succession would otherwise race to upload the
+# same Worker, and the loser is whichever finishes second — not whichever is
+# newer. Queue instead, and never cancel a deploy half-way.
+concurrency:
+  group: docs-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+      - run: npm ci
+        working-directory: site
+      # `build` also checks every internal link against what was emitted —
+      # see site/scripts/check-links.mjs.
+      - run: npm run build
+        working-directory: site
+
+      # Only from main, and only after the build proved the site compiles.
+      # Deploying the same tree the build job just produced, rather than an
+      # artifact handed between jobs, keeps this a single reviewable path.
+      - name: Deploy to Cloudflare Workers
+        if: github.event_name == 'push'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Only needed when the token can see more than one account, in which
+          # case wrangler cannot pick for you. Unset is the common case and an
+          # empty value reads as unset, so this costs nothing when absent.
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # Assets-only Worker: wrangler.jsonc has no `main`, so this uploads
+        # ./site/dist and nothing else. Run from the repository root, where
+        # wrangler.jsonc lives.
+        run: npx --yes wrangler@4 deploy
+
+  # Documentation that lags the code is worse than no documentation, because it
+  # is believed. The README used to be the single surface, so drift was visible
+  # in review; now the detail lives in site/, and a PR that changes a documented
+  # surface without touching the docs is exactly the change nobody notices.
+  #
+  # This is a guard, not a style check: it names the surfaces the site actually
+  # describes, and it can be answered either by updating the docs or by saying
+  # in the PR body that they did not need updating.
+  sync:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fail if a documented surface changed without the docs
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          # Through the environment, never interpolated into the script: a PR
+          # body is attacker-controlled text.
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -eu
+          # Full history is already checked out (fetch-depth: 0); this is only
+          # to make sure the base branch ref itself exists locally, since the
+          # three-dot diff below resolves the merge base from it.
+          git fetch --no-tags origin "$BASE_REF"
+          changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
+
+          # The surfaces the site documents page for page. Internals are not
+          # listed: this fires on what a reader of the docs would notice.
+          surfaces='^(README\.md|SECURITY\.md|packages/morse-ai/src/(prompt\.ts|cli/(main|agent)\.ts|mcp/tools\.ts)|packages/(bus|registry)/src/mcp\.ts|packages/registry/src/(roles|plugins|toml)\.ts)$'
+
+          touched=$(echo "$changed" | grep -E "$surfaces" || true)
+          docs=$(echo "$changed" | grep -E '^site/src/content/docs/' || true)
+
+          if [ -z "$touched" ] || [ -n "$docs" ]; then
+            echo "ok"
+            exit 0
+          fi
+
+          case "$PR_BODY" in
+            *"docs: n/a"*)
+              echo "Docs skipped by request: the PR body says 'docs: n/a'."
+              exit 0
+              ;;
+          esac
+
+          echo "This PR changes a surface the docs site describes:"
+          echo
+          echo "$touched" | sed 's/^/  /'
+          echo
+          echo "but nothing under site/src/content/docs/ changed. The site is the"
+          echo "reference now — the README only links to it — so a change here that"
+          echo "does not land there is a page that quietly starts lying."
+          echo
+          echo "Fix it one of two ways:"
+          echo "  * update the matching page(s) under site/src/content/docs/, or"
+          echo "  * put 'docs: n/a' in the PR body if the change genuinely is not"
+          echo "    described anywhere on the site."
+          echo
+          echo "AGENTS.md maps each surface to the page that documents it."
+          exit 1
