@@ -81,11 +81,14 @@ If something seems to need a library, check whether the standard library covers 
 
 ## Tests
 
-`node:test`, no framework. The suite covers four levels:
+`node:test`, no framework. The suite covers every level:
 
 - `test/store.test.js` — delivery semantics against the store directly
 - `test/roles.test.js` — the role-file contract
 - `test/security.test.js` — escaping, path traversal, file permissions
+- `test/toon.test.js` — the TOON writer: goldens, plus a round-trip through the
+  reference decoder (the one dev-only dependency), so "follows the spec" stays
+  a tested property
 - `test/mcp.test.js` — the MCP server over real stdio, as a harness drives it
 - `test/six-agents.test.js` — six independent processes coordinating
 

@@ -182,7 +182,7 @@ export async function main(argv: string[]): Promise<void> {
         outcome: result.outcome,
         thread_id: sent.threadId,
         reply: result.reply ? renderMessage(result.reply) : undefined,
-        inbox: result.inbox.map(renderMessage),
+        inbox: result.inbox.map((m) => renderMessage(m)),
       });
       process.exitCode = exitFor(result.outcome);
       return;
@@ -208,7 +208,7 @@ export async function main(argv: string[]): Promise<void> {
       if (!me) return;
       await bus.heartbeat(room, me);
       const messages = bus.inbox(room, me);
-      return out({ messages: messages.map(renderMessage), count: messages.length });
+      return out({ messages: messages.map((m) => renderMessage(m)), count: messages.length });
     }
 
     case "wait": {
@@ -222,24 +222,24 @@ export async function main(argv: string[]): Promise<void> {
           outcome: result.outcome,
           thread_id: threadId,
           reply: result.reply ? renderMessage(result.reply) : undefined,
-          inbox: result.inbox.map(renderMessage),
+          inbox: result.inbox.map((m) => renderMessage(m)),
         });
         process.exitCode = exitFor(result.outcome);
         return;
       }
       const messages = await waitForInbox(bus, room, me, { timeoutMs });
-      return out({ messages: messages.map(renderMessage), count: messages.length });
+      return out({ messages: messages.map((m) => renderMessage(m)), count: messages.length });
     }
 
     case "thread": {
       const id = needs(a, "thread <id>");
       if (!id) return;
-      return out({ thread_id: id, messages: bus.thread(room, id).map(renderMessage) });
+      return out({ thread_id: id, messages: bus.thread(room, id).map((m) => renderMessage(m)) });
     }
 
     case "history": {
       const limit = Number(args.flags.n ?? args.flags.lines ?? 40);
-      return out({ room, messages: bus.history(room, { limit }).map(renderMessage) });
+      return out({ room, messages: bus.history(room, { limit }).map((m) => renderMessage(m)) });
     }
 
     case "rooms":

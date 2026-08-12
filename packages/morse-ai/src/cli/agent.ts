@@ -1,7 +1,8 @@
-import { renderMessage, waitForInbox, waitForReply } from "@morse-ai/bus";
+import { renderMessage, waitForInbox, waitForReply, type Message } from "@morse-ai/bus";
 import type { AgentStatus } from "@morse-ai/registry";
-import { renderAgent } from "@morse-ai/registry";
+import { renderAgent, renderAgentBrief } from "@morse-ai/registry";
 import { Morse } from "../morse.js";
+import { encodeToon } from "../toon.js";
 import { formatMessage } from "./format.js";
 
 /**
@@ -49,17 +50,28 @@ function wants(args: AgentArgs, flag: string): boolean {
   return Boolean(args.flags[flag]);
 }
 
+/**
+ * `--toon` is what the protocol prompt teaches agents; `--json` is the script
+ * contract — same shape it has always had, compacted. Humans get neither and
+ * keep the formatted output.
+ */
 function emit(args: AgentArgs, payload: unknown, human: () => void): void {
+  if (wants(args, "toon")) {
+    console.log(encodeToon(payload));
+    return;
+  }
   if (wants(args, "json")) {
-    console.log(JSON.stringify(payload, null, 2));
+    console.log(JSON.stringify(payload));
     return;
   }
   human();
 }
 
 function waitSeconds(args: AgentArgs): number {
+  const cap = Number(process.env.MORSE_WAIT_MAX);
+  const max = Number.isFinite(cap) && cap > 0 ? cap : 900;
   const raw = Number(args.flags.timeout ?? process.env.MORSE_WAIT_SECONDS ?? 50);
-  return Number.isFinite(raw) && raw > 0 ? Math.min(raw, 900) : 50;
+  return Number.isFinite(raw) && raw > 0 ? Math.min(raw, max) : Math.min(50, max);
 }
 
 /** Handles the agent verbs. Returns false for a command it does not own. */
@@ -88,7 +100,10 @@ function register(args: AgentArgs, room: string): void {
   const me = whoami(args);
   if (!me) return;
   const store = new Morse();
-  const skills = typeof args.flags.skills === "string" ? args.flags.skills.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+  // Same fallback the MCP server applies: the flag wins, the env (set by
+  // `morse join` from a role file) fills in behind it.
+  const rawSkills = typeof args.flags.skills === "string" ? args.flags.skills : process.env.MORSE_SKILLS;
+  const skills = rawSkills?.split(",").map((s) => s.trim()).filter(Boolean);
   const agent = store.register({
     room,
     name: me,
@@ -101,8 +116,31 @@ function register(args: AgentArgs, room: string): void {
     pid: harnessPid(),
     cwd: process.cwd(),
   });
-  emit(args, { you: agent.name, room, registered: renderAgent(agent), roster: store.roster(room).map(renderAgent) }, () => {
+  // The check-in, same as morse_register over MCP: one command answers "who am
+  // I here with" and "what is already waiting", so a session's opening turn is
+  // this and then straight to work — or straight to a park.
+  //
+  // Two shapes on purpose: `--toon` is the surface agents read, so it gets the
+  // model-facing rendering — brief roster, viewer-trimmed mail, no echo of the
+  // agent's own record. `--json` is the script contract and keeps the full one.
+  const messages = store.inbox(room, me);
+  const payload = wants(args, "toon")
+    ? {
+        you: agent.name,
+        room,
+        roster: store.roster(room).map(renderAgentBrief),
+        messages: messages.map((m) => renderMessage(m, me)),
+      }
+    : {
+        you: agent.name,
+        room,
+        registered: renderAgent(agent),
+        roster: store.roster(room).map(renderAgent),
+        messages: messages.map((m) => renderMessage(m)),
+      };
+  emit(args, payload, () => {
     console.log(`registered ${agent.name} in ${room}`);
+    for (const message of messages) console.log(formatMessage(message), "\n");
   });
 }
 
@@ -119,7 +157,8 @@ function inbox(args: AgentArgs, room: string): void {
   const store = new Morse();
   store.touch(room, me);
   const messages = store.inbox(room, me);
-  emit(args, { messages: messages.map(renderMessage), count: messages.length }, () => {
+  const view = wants(args, "toon") ? (m: Message) => renderMessage(m, me) : (m: Message) => renderMessage(m);
+  emit(args, { messages: messages.map(view), count: messages.length }, () => {
     for (const message of messages) console.log(formatMessage(message), "\n");
     if (messages.length === 0) console.log("(nothing waiting)");
   });
@@ -136,6 +175,9 @@ async function wait(args: AgentArgs, room: string): Promise<void> {
   const store = new Morse();
   const timeoutMs = waitSeconds(args) * 1000;
   const threadId = typeof args.flags.thread === "string" ? args.flags.thread : undefined;
+  const view = wants(args, "toon")
+    ? (m: Message) => renderMessage(m, me)
+    : (m: Message) => renderMessage(m);
 
   if (threadId) {
     const previous = store.getAgent(room, me)?.status ?? "idle";
@@ -149,8 +191,8 @@ async function wait(args: AgentArgs, room: string): Promise<void> {
       {
         outcome: result.outcome,
         thread_id: threadId,
-        reply: result.reply ? renderMessage(result.reply) : undefined,
-        inbox: result.inbox.map(renderMessage),
+        reply: result.reply ? view(result.reply) : undefined,
+        inbox: result.inbox.map(view),
       },
       () => {
         for (const message of result.inbox) console.log(formatMessage(message), "\n");
@@ -165,9 +207,14 @@ async function wait(args: AgentArgs, room: string): Promise<void> {
   emit(
     args,
     {
-      messages: messages.map(renderMessage),
+      messages: messages.map(view),
       waited_seconds: Math.round(timeoutMs / 1000),
-      room_status: messages.length === 0 ? store.roster(room).map((a) => ({ name: a.name, status: a.status, online: a.online })) : undefined,
+      // The agent surface dropped the per-cycle status block (MCP's deltas
+      // replaced it); the script surface keeps its 0.3.x shape.
+      room_status:
+        messages.length === 0 && !wants(args, "toon")
+          ? store.roster(room).map((a) => ({ name: a.name, status: a.status, online: a.online }))
+          : undefined,
     },
     () => {
       for (const message of messages) console.log(formatMessage(message), "\n");
@@ -205,7 +252,7 @@ function thread(args: AgentArgs, room: string): void {
     return;
   }
   const messages = new Morse().thread(room, threadId);
-  emit(args, { thread_id: threadId, messages: messages.map(renderMessage) }, () => {
+  emit(args, { thread_id: threadId, messages: messages.map((m) => renderMessage(m)) }, () => {
     for (const message of messages) console.log(formatMessage(message), "\n");
   });
 }
@@ -213,7 +260,7 @@ function thread(args: AgentArgs, room: string): void {
 function history(args: AgentArgs, room: string): void {
   const limit = Number(args.flags.n ?? args.flags.lines ?? 40);
   const messages = new Morse().history(room, { limit });
-  emit(args, { room, messages: messages.map(renderMessage) }, () => {
+  emit(args, { room, messages: messages.map((m) => renderMessage(m)) }, () => {
     for (const message of messages) console.log(formatMessage(message), "\n");
   });
 }

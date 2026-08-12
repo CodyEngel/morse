@@ -20,8 +20,13 @@ export class McpClient {
       if (key.startsWith("MORSE_")) delete base[key];
     }
 
+    // The model surface defaults to TOON in 0.4.0; the suite pins JSON so
+    // `call()` can parse results. A test that names MORSE_FORMAT itself —
+    // including `MORSE_FORMAT: undefined`, which spawn() drops, leaving the
+    // server on its real default — gets exactly what it asked for.
+    const pinned = "MORSE_FORMAT" in env ? {} : { MORSE_FORMAT: "json" };
     this.#child = spawn(process.execPath, [CLI, "mcp"], {
-      env: { ...base, ...env },
+      env: { ...base, ...pinned, ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
 

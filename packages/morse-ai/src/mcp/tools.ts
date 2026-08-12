@@ -24,7 +24,7 @@ export const COMPOSED_TOOLS: ToolDefinition[] = [
     name: "morse_register",
     title: "Join the room",
     description:
-      "Announce yourself to the room and publish what you are good at. Call this once at the start of your session, and again whenever your expertise or focus changes. Your description is what teammates read when deciding who to ask, so make it concrete about what you own and what you do NOT own. Returns the current roster.",
+      "Announce yourself to the room and publish what you are good at. Call this once at the start of your session, and again whenever your expertise or focus changes. Your description is what teammates read when deciding who to ask, so make it concrete about what you own and what you do NOT own. Returns the roster and any messages already waiting for you — handle those before anything else.",
     inputSchema: schema({
       name: str("Your agent name, e.g. 'backend'. Defaults to $MORSE_AGENT."),
       role: str("Human-readable role, e.g. 'Backend Engineer'."),
@@ -44,7 +44,7 @@ export const COMPOSED_TOOLS: ToolDefinition[] = [
         subject: str("Optional one-line summary."),
         timeout_seconds: {
           type: "number",
-          description: "How long to wait for the answer. Default 50.",
+          description: "How long to wait for the answer. Omit to use the session default.",
         },
       },
       ["to", "body"],
@@ -54,9 +54,12 @@ export const COMPOSED_TOOLS: ToolDefinition[] = [
     name: "morse_wait",
     title: "Wait for messages",
     description:
-      "Block until mail arrives for you, then return it. This is how you hear anything while idle — nothing can interrupt you between turns, so you must park here on purpose. Call it whenever you have finished your current work and are waiting on teammates. If it returns no messages, either call it again or, if you have nothing outstanding, set your status to 'done'.",
+      "Block until mail arrives for you, then return it. This is how you hear anything while idle — nothing can interrupt you between turns, so you must park here on purpose. Call it whenever you have finished your current work and are waiting on teammates. Mail interrupts the park immediately, so a long timeout costs nothing in responsiveness — pass a long timeout_seconds when you expect to be idle. If it returns no messages and you have nothing outstanding, park again.",
     inputSchema: schema({
-      timeout_seconds: { type: "number", description: "How long to park. Default 50." },
+      timeout_seconds: {
+        type: "number",
+        description: "How long to park. Omit for the session default; go long (600+) when idle.",
+      },
       thread_id: str("Only return messages on this thread. Use to resume an interrupted morse_ask."),
     }),
   },

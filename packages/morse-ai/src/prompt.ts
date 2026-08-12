@@ -30,17 +30,33 @@ export interface PromptOptions {
  */
 const CLI_NOTES = `## Talking to morse
 
-Every morse operation is a shell command. Pass \`--json\` on anything you need to
-read programmatically; without it the output is formatted for a human.
+Every morse operation is a shell command. Pass \`--toon\` on anything you need
+to read programmatically — output comes back as TOON (Token-Oriented Object
+Notation): field names declared once, like \`messages[2]{id,from,body}:\`, then
+one row per entry. It is the cheapest output to read. Pass \`--json\` instead
+only if you specifically need JSON.
 
 \`morse wait\` **blocks** until mail arrives or it times out. That is deliberate
-and it is how you hear anything — run it and let it sit. It is not hung.
+and it is how you hear anything — run it and let it sit. It is not hung. Mail
+interrupts the park immediately, so a long \`--timeout\` costs nothing in
+responsiveness; use one when you expect to be idle.
 
 \`morse ask\` exits **0** when you got your answer, **2** when other mail arrived
 first, and **1** when nobody replied in time. Exit 2 matters: your question is
 still unanswered *and* the messages in \`inbox\` have already been marked read, so
 they will not appear again. Handle them, then \`morse wait --thread <id>\` to keep
 waiting on your original question.
+
+`;
+
+/**
+ * The MCP transport's counterpart to CLI_NOTES: results arrive as TOON by
+ * default, and a model that has never been told so will still read it — but
+ * telling it once here beats letting it wonder.
+ */
+const MCP_NOTES = `Morse tool results arrive as TOON (Token-Oriented Object Notation) unless the
+server was configured for JSON: field names are declared once, like
+\`messages[2]{id,from,body}:\`, and each following indented line is one row.
 
 `;
 
@@ -58,13 +74,13 @@ const VERBS = {
     done: "`morse_status` with `done`",
   },
   cli: {
-    register: "`morse register`",
-    roster: "`morse roster`",
-    ask: "`morse ask <agent> \"<question>\" --json`",
+    register: "`morse register --toon`",
+    roster: "`morse roster --toon`",
+    ask: "`morse ask <agent> \"<question>\" --toon`",
     send: "`morse send <agent> \"<message>\"`",
     reply: "`morse reply <thread-id> \"<answer>\"`",
-    wait: "`morse wait --json`",
-    inbox: "`morse inbox --json`",
+    wait: "`morse wait --toon`",
+    inbox: "`morse inbox --toon`",
     status: "`morse status set <state>`",
     done: "`morse status set done`",
   },
@@ -78,6 +94,10 @@ const VERBS = {
  * Second, peers with no hierarchy will happily acknowledge each other until the
  * heat death of the universe — hence the rules about when NOT to send.
  *
+ * A third arrived with 0.4.0: the first agent into a room used to improvise —
+ * or worse, read "everyone else is done" as permission to leave — hence the
+ * explicit "being early is normal, park" instruction.
+ *
  * Everything role-specific comes from a role file. Morse supplies none of it.
  */
 export function buildPrompt(options: PromptOptions): string {
@@ -88,7 +108,7 @@ export function buildPrompt(options: PromptOptions): string {
 
   const identity = role?.description
     ? `${role.description}\n`
-    : `You have not been given a role definition, so decide what you are contributing based on what you are asked to do, and publish it with ${v.register} so teammates can route to you.\n`;
+    : `You have not been given a role definition. Register under your assigned name as-is; once your first task shows what you are contributing, publish a description and skills with ${v.register} so teammates can route to you. Do not invent expertise before you have work.\n`;
 
   const brief = role?.brief ? `${role.brief}\n\n` : "";
 
@@ -97,7 +117,7 @@ export function buildPrompt(options: PromptOptions): string {
 You are **${name}** (${title}), one of several agents working together in the room \`${room}\`.
 
 ${identity}
-${brief}${transport === "cli" ? CLI_NOTES : ""}## Your teammates are peers, not subordinates
+${brief}${transport === "cli" ? CLI_NOTES : MCP_NOTES}## Your teammates are peers, not subordinates
 
 The other agents are independent sessions with their own context and their own expertise. You cannot see their work and they cannot see yours — everything you know about each other travels over morse. There is no manager: nobody is going to assign you work or collect your output. Coordinate directly.
 
@@ -105,14 +125,19 @@ Do not spawn subagents to do a teammate's job. If the work belongs to someone el
 
 ## The loop
 
-1. ${v.register} — publish who you are and what you own.
-2. ${v.roster} — see who is here and what they are good at. Route by expertise, not by guessing names.
-3. Do your own work.
-4. ${v.ask} when you cannot proceed without an answer. ${v.send} when you have something a teammate needs but you are not blocked on them.
-5. ${v.wait} whenever you have nothing left to do. **This is the only way you hear anything.** Nothing can interrupt you between turns, so if you stop calling morse, you have effectively left the room.
-6. Repeat from 3 until the work is finished.
+1. ${v.register} — publish who you are and what you own. The result includes the roster and any messages already waiting for you: deal with those before anything else.
+2. Do your own work.
+3. ${v.ask} when you cannot proceed without an answer. ${v.send} when you have something a teammate needs but you are not blocked on them. Route by expertise, not by guessing names.
+4. ${v.wait} whenever you have nothing left to do. **This is the only way you hear anything.** Nothing can interrupt you between turns, so if you stop calling morse, you have effectively left the room. Mail breaks the park immediately, so a long timeout costs nothing — go long when you expect to be idle.
+5. Repeat from 2 until the work is finished.
+
+Roster changes find you on their own: when someone joins, departs, or changes what they own, compact \`arrived\` / \`changed\` / \`departed\` entries ride your next tool result. You rarely need ${v.roster} after the start.
 
 Keep ${v.status} current — \`working\`, \`blocked\` (say who you are waiting on), or \`done\`. It is how the group can tell whether it has converged.
+
+## If you are first
+
+A roster showing only you means you arrived early, and that is normal. Park with ${v.wait} and stay parked — teammates and instructions come to you over morse. Never set your status to \`done\` before you have been given work.
 
 ## Answer promptly
 

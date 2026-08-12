@@ -48,6 +48,9 @@ export interface Agent {
   online: boolean;
   /** Process still exists, even if it has not touched the registry recently. */
   alive: boolean;
+  /** Has not departed. The raw flag, exposed so a caller can tell a deliberate
+   *  leave from a session that is merely quiet — `online` conflates the two. */
+  present: boolean;
 }
 
 export interface PublishInput {
@@ -326,6 +329,7 @@ export class FileRegistry {
       lastSeen: mtime,
       online: present && status !== "offline" && Date.now() - mtime < ONLINE_WINDOW_MS,
       alive: present && isRunning(record.pid ?? null),
+      present,
     };
   }
 

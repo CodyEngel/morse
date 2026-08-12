@@ -8,6 +8,20 @@ export interface WaitOptions {
 
 const DEFAULT_POLL_MS = 200;
 
+/**
+ * Parks got long in 0.4.0 (minutes, not seconds), and each poll is a DB query
+ * plus a registry heartbeat. Five per second is the right cadence for the
+ * first moments — an ask should feel instant — but an agent that has already
+ * sat for five seconds is settled in, and a reply landing within a second of
+ * a multi-minute park is indistinguishable from one landing within 200ms.
+ */
+const BACKOFF_AFTER_MS = 5_000;
+const BACKOFF_POLL_MS = 1_000;
+
+function pollInterval(started: number, pollMs: number): number {
+  return Date.now() - started < BACKOFF_AFTER_MS ? pollMs : Math.max(pollMs, BACKOFF_POLL_MS);
+}
+
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal?.aborted) return resolve();
@@ -36,7 +50,8 @@ export async function waitForInbox(
   opts: WaitOptions,
 ): Promise<Message[]> {
   const pollMs = opts.pollMs ?? DEFAULT_POLL_MS;
-  const deadline = Date.now() + opts.timeoutMs;
+  const started = Date.now();
+  const deadline = started + opts.timeoutMs;
 
   for (;;) {
     await bus.heartbeat(room, name);
@@ -45,7 +60,7 @@ export async function waitForInbox(
     if (opts.signal?.aborted) return [];
     const remaining = deadline - Date.now();
     if (remaining <= 0) return [];
-    await sleep(Math.min(pollMs, remaining), opts.signal);
+    await sleep(Math.min(pollInterval(started, pollMs), remaining), opts.signal);
   }
 }
 
@@ -74,7 +89,8 @@ export async function waitForReply(
   opts: WaitOptions,
 ): Promise<AskResult> {
   const pollMs = opts.pollMs ?? DEFAULT_POLL_MS;
-  const deadline = Date.now() + opts.timeoutMs;
+  const started = Date.now();
+  const deadline = started + opts.timeoutMs;
   const other: Message[] = [];
 
   for (;;) {
@@ -103,6 +119,6 @@ export async function waitForReply(
 
     const remaining = deadline - Date.now();
     if (remaining <= 0) return { outcome: "timeout", inbox: other };
-    await sleep(Math.min(pollMs, remaining), opts.signal);
+    await sleep(Math.min(pollInterval(started, pollMs), remaining), opts.signal);
   }
 }

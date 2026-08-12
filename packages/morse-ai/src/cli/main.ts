@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { runMcpServer } from "../mcp/server.js";
 import { buildPrompt } from "../prompt.js";
-import { renderAgent, resolveRoom, sanitizeRoom } from "@morse-ai/registry";
+import { renderAgent, renderAgentBrief, resolveRoom, sanitizeRoom } from "@morse-ai/registry";
 import { pluginsEnabled } from "@morse-ai/registry/discovery";
 import {
   collectRoles,
@@ -18,11 +18,29 @@ import {
   roleTemplate,
   type RoleRejection,
 } from "@morse-ai/registry/discovery";
-import { BROADCAST, hintForAsk, normalizeRecipients, renderMessage, waitForReply } from "@morse-ai/bus";
+import { BROADCAST, hintForAsk, normalizeRecipients, renderMessage, waitForReply, type Message } from "@morse-ai/bus";
 import { Morse } from "../morse.js";
 import { VERSION } from "../version.js";
 import { agentColor, bold, cyan, dim, formatMessage, relativeTime, safe, statusBadge, yellow } from "./format.js";
 import { exitFor, harnessPid, runAgentCommand, setStatusCommand } from "./agent.js";
+import { encodeToon } from "../toon.js";
+
+/**
+ * Machine output, if any was asked for. `--toon` is what agents are taught;
+ * `--json` is the script contract — same shape it has always had, minus the
+ * indentation nobody was reading.
+ */
+function emitMachine(args: Args, payload: unknown): boolean {
+  if (args.flags.toon) {
+    console.log(encodeToon(payload));
+    return true;
+  }
+  if (args.flags.json) {
+    console.log(JSON.stringify(payload));
+    return true;
+  }
+  return false;
+}
 
 const HELP = `morse ${VERSION} — agent-to-agent communication for solo builders
 
@@ -39,7 +57,7 @@ const HELP = `morse ${VERSION} — agent-to-agent communication for solo builder
   morse reset [--force]                   Clear the room (asks first)
   morse mcp                               Run the MCP server (harnesses call this)
 
-Agent verbs (also available over MCP; --json for machine-readable output):
+Agent verbs (also available over MCP; --toon or --json for machine output):
   morse register / leave                  Join or depart, as $MORSE_AGENT or --as
   morse inbox                             Unread mail, without blocking
   morse wait [--thread <id>]              Block until mail arrives
@@ -57,11 +75,24 @@ Morse ships no roles. It reads its own, and borrows agent definitions other
 tools already keep — \`morse roles\` shows every directory it looks in and which
 plugin supplied each definition.`;
 
-const OPENING_TURN =
-  "Join the room: call morse_register, then morse_roster to see who is here and what they own, " +
-  "then morse_inbox. Handle anything waiting for you. When you have nothing left to do, call " +
-  "morse_wait and keep following the protocol in your system prompt — do not stop and hand back " +
-  "to me while teammates are still working.";
+/**
+ * Per transport, because the spellings differ: a CLI-transport session has no
+ * MCP tools, and telling it to "call morse_register" sends it looking for a
+ * tool that does not exist. One call is the whole opening on either transport —
+ * register returns the roster and any waiting mail in the same result.
+ */
+export const OPENING_TURNS = {
+  mcp:
+    "Join the room: call morse_register — its result includes the roster and anything already waiting for you. " +
+    "Deal with what came back, then call morse_wait and stay parked; keep following the protocol in your system " +
+    "prompt. Do not stop and hand back to me while teammates are still working, and do not set status done " +
+    "before you have been given work.",
+  cli:
+    "Join the room: run `morse register --toon` — its output includes the roster and anything already waiting " +
+    "for you. Deal with what came back, then run `morse wait --toon` and let it block; keep following the " +
+    "protocol in your system prompt. Do not stop and hand back to me while teammates are still working, and do " +
+    "not set status done before you have been given work.",
+} as const;
 
 interface Args {
   command: string;
@@ -165,16 +196,6 @@ async function join_(args: Args, room: string): Promise<void> {
   // typo, and the user cannot debug a directory they did not create.
   reportRejections(found.rejected);
   const cliPath = fileURLToPath(new URL("../cli.js", import.meta.url));
-  const serverEnv: Record<string, string> = {
-    MORSE_AGENT: name,
-    MORSE_ROOM: room,
-    ...(role?.role ? { MORSE_ROLE: role.role } : {}),
-    ...(role?.description ? { MORSE_DESCRIPTION: role.description } : {}),
-    ...(role?.skills.length ? { MORSE_SKILLS: role.skills.join(",") } : {}),
-    ...(process.env.MORSE_DB ? { MORSE_DB: process.env.MORSE_DB } : {}),
-    ...(process.env.MORSE_HOME ? { MORSE_HOME: process.env.MORSE_HOME } : {}),
-    ...(process.env.MORSE_PLUGINS ? { MORSE_PLUGINS: process.env.MORSE_PLUGINS } : {}),
-  };
 
   // CLI transport: the agent drives morse with shell commands instead of MCP
   // tools, which is the path for any harness `buildHarnessArgs` cannot wire.
@@ -182,6 +203,28 @@ async function join_(args: Args, room: string): Promise<void> {
   const systemPrompt = buildPrompt({ name, room, role, transport });
   const harness = String(args.flags.harness ?? "claude");
   const headless = args.passthrough.some((arg) => arg === "-p" || arg === "--print" || arg === "exec");
+
+  // The launcher, not the agent, sizes the park: Claude Code's MCP tool
+  // timeout is effectively unbounded, so its sessions idle at 270 s — just
+  // under the 5-minute prompt-cache TTL, so each re-park turn finds the cache
+  // warm. Codex and anything unrecognised keep the conservative 50. An
+  // explicit MORSE_WAIT_SECONDS in your environment outranks both.
+  const isClaudeCode = harnessKind(harness) === "claude" && /(^|\/)claude$/.test(harness.trim());
+  const waitSeconds = process.env.MORSE_WAIT_SECONDS ?? (isClaudeCode ? "270" : "50");
+
+  const serverEnv: Record<string, string> = {
+    MORSE_AGENT: name,
+    MORSE_ROOM: room,
+    MORSE_WAIT_SECONDS: waitSeconds,
+    ...(role?.role ? { MORSE_ROLE: role.role } : {}),
+    ...(role?.description ? { MORSE_DESCRIPTION: role.description } : {}),
+    ...(role?.skills.length ? { MORSE_SKILLS: role.skills.join(",") } : {}),
+    ...(process.env.MORSE_DB ? { MORSE_DB: process.env.MORSE_DB } : {}),
+    ...(process.env.MORSE_HOME ? { MORSE_HOME: process.env.MORSE_HOME } : {}),
+    ...(process.env.MORSE_PLUGINS ? { MORSE_PLUGINS: process.env.MORSE_PLUGINS } : {}),
+    ...(process.env.MORSE_WAIT_MAX ? { MORSE_WAIT_MAX: process.env.MORSE_WAIT_MAX } : {}),
+    ...(process.env.MORSE_FORMAT ? { MORSE_FORMAT: process.env.MORSE_FORMAT } : {}),
+  };
 
   const harnessArgs = buildHarnessArgs({
     harness,
@@ -194,7 +237,7 @@ async function join_(args: Args, room: string): Promise<void> {
     // Without an opening turn the session registers and then sits at the
     // prompt: present on the roster, accumulating mail, listening to none of
     // it, and indistinguishable from a crash until a human types something.
-    opening: headless ? undefined : OPENING_TURN,
+    opening: headless ? undefined : OPENING_TURNS[transport],
   });
 
   console.log(
@@ -211,7 +254,9 @@ async function join_(args: Args, room: string): Promise<void> {
 
   const child = spawn(harness, harnessArgs, {
     stdio: "inherit",
-    env: { ...process.env, MORSE_AGENT: name, MORSE_ROOM: room },
+    // The wait default rides along so a CLI-transport agent's `morse wait`
+    // (which reads the environment, not the MCP server's) parks the same way.
+    env: { ...process.env, MORSE_AGENT: name, MORSE_ROOM: room, MORSE_WAIT_SECONDS: waitSeconds },
   });
 
   // Liveness should mean "the session exists", not "some 40ms morse process is
@@ -311,14 +356,17 @@ function harnessKind(harness: string): "claude" | "codex" {
 function roster(args: Args, room: string): void {
   const store = new Morse();
   const agents = store.roster(room);
-  if (args.flags.json) {
-    console.log(JSON.stringify({
-      room,
-      agents: agents.map((a) => ({ ...renderAgent(a), unread: store.unreadCount(room, a.name) })),
-      online: agents.filter((a) => a.online).length,
-    }, null, 2));
-    return;
-  }
+  const online = agents.filter((a) => a.online).length;
+  // `--toon` is the agent surface, so it mirrors morse_roster's brief shape;
+  // `--json` keeps the operator view with unread counts, exactly as before.
+  const payload = args.flags.toon
+    ? { room, agents: agents.map(renderAgentBrief), online }
+    : {
+        room,
+        agents: agents.map((a) => ({ ...renderAgent(a), unread: store.unreadCount(room, a.name) })),
+        online,
+      };
+  if (emitMachine(args, payload)) return;
   if (agents.length === 0) {
     console.log(`No agents in room ${cyan(room)} yet. Start one with ${bold("morse join <agent>")}.`);
     return;
@@ -346,17 +394,15 @@ function status(args: Args, room: string): void {
   const online = agents.filter((a) => a.online);
   const done = agents.filter((a) => a.status === "done");
   const blocked = agents.filter((a) => a.online && a.status === "blocked");
-  if (args.flags.json) {
-    console.log(JSON.stringify({
-      room,
-      online: online.length,
-      done: done.length,
-      blocked: blocked.map((a) => ({ name: a.name, note: a.statusNote })),
-      messages: store.maxMessageId(room),
-      agents: agents.map((a) => ({ name: a.name, status: a.status, online: a.online })),
-    }, null, 2));
-    return;
-  }
+  const emitted = emitMachine(args, {
+    room,
+    online: online.length,
+    done: done.length,
+    blocked: blocked.map((a) => ({ name: a.name, note: a.statusNote })),
+    messages: store.maxMessageId(room),
+    agents: agents.map((a) => ({ name: a.name, status: a.status, online: a.online })),
+  });
+  if (emitted) return;
   console.log(
     `${bold(room)}: ${online.length} online, ${done.length} done, ${blocked.length} blocked, ` +
       `${store.maxMessageId(room)} messages`,
@@ -392,10 +438,7 @@ async function log(args: Args, room: string): Promise<void> {
 function rooms(args: Args): void {
   const store = new Morse();
   const all = store.listRooms();
-  if (args.flags.json) {
-    console.log(JSON.stringify({ rooms: all }, null, 2));
-    return;
-  }
+  if (emitMachine(args, { rooms: all })) return;
   if (all.length === 0) {
     console.log("No rooms yet.");
     return;
@@ -600,15 +643,17 @@ async function ask(args: Args, room: string): Promise<void> {
   // question is still unanswered *and* `inbox` has already advanced the cursor
   // past everything it drained. Structured output makes that impossible to
   // skim past, and the exit code lets a shell loop branch without parsing.
-  if (args.flags.json) {
-    console.log(JSON.stringify({
-      outcome: result.outcome,
-      thread_id: sent.threadId,
-      reply: result.reply ? renderMessage(result.reply) : undefined,
-      inbox: result.inbox.map(renderMessage),
-      hint: hintForAsk(result.outcome, sent.threadId),
-    }, null, 2));
-  } else {
+  const view = args.flags.toon
+    ? (m: Message) => renderMessage(m, me)
+    : (m: Message) => renderMessage(m);
+  const emitted = emitMachine(args, {
+    outcome: result.outcome,
+    thread_id: sent.threadId,
+    reply: result.reply ? view(result.reply) : undefined,
+    inbox: result.inbox.map(view),
+    hint: hintForAsk(result.outcome, sent.threadId),
+  });
+  if (!emitted) {
     for (const message of result.inbox) console.log(formatMessage(message), "\n");
     if (result.reply) console.log(formatMessage(result.reply));
     if (result.inbox.length > 0 && !result.reply) {
@@ -701,7 +746,7 @@ async function confirm(question: string): Promise<boolean> {
  * parses the agent name as the flag's argument and then reports that no agent
  * was given — the option and the positional cannot both survive otherwise.
  */
-const BOOLEAN_FLAGS = new Set(["no-plugins", "force", "help", "version", "follow", "json", "no-registry"]);
+const BOOLEAN_FLAGS = new Set(["no-plugins", "force", "help", "version", "follow", "json", "toon", "no-registry"]);
 
 function parseArgs(argv: string[]): Args {
   const flags: Record<string, string | boolean> = {};

@@ -116,8 +116,11 @@ export function busHandler(bus: Bus) {
           threadId: args.thread_id as string | undefined,
           replyTo: args.reply_to === undefined ? undefined : Number(args.reply_to),
         });
+        // No echo: the model composed this body one tool call ago, and sending
+        // it back doubles what the sender pays to say anything. The id and
+        // thread are the two things it does not already have.
         return {
-          sent: renderMessage(message),
+          sent: { id: message.id, thread_id: message.threadId, to: message.to },
           ...(unknown.length > 0
             ? {
                 warning: `Not in this room: ${unknown.join(", ")}. Check morse_roster for who is actually here.`,
@@ -144,22 +147,22 @@ export function busHandler(bus: Bus) {
           threadId,
           subject: args.subject as string | undefined,
         });
-        return { sent: renderMessage(message) };
+        return { sent: { id: message.id, thread_id: message.threadId, to: message.to } };
       }
 
       case "morse_inbox": {
         const messages = bus.inbox(room, me);
-        return { messages: messages.map(renderMessage), count: messages.length };
+        return { messages: messages.map((m) => renderMessage(m, me)), count: messages.length };
       }
 
       case "morse_thread": {
         const threadId = requireString(args.thread_id, "thread_id");
-        return { thread_id: threadId, messages: bus.thread(room, threadId).map(renderMessage) };
+        return { thread_id: threadId, messages: bus.thread(room, threadId).map((m) => renderMessage(m)) };
       }
 
       case "morse_history": {
         const limit = args.limit === undefined ? 40 : Math.max(1, Math.min(500, Number(args.limit)));
-        return { room, messages: bus.history(room, { limit }).map(renderMessage) };
+        return { room, messages: bus.history(room, { limit }).map((m) => renderMessage(m)) };
       }
 
       default:
@@ -168,14 +171,22 @@ export function busHandler(bus: Bus) {
   };
 }
 
-export function renderMessage(message: Message): Record<string, unknown> {
+/**
+ * `viewer` trims envelope the reader can infer: `to` disappears when the reader
+ * is the sole recipient (mail in your own inbox is addressed to you), and a
+ * null subject disappears rather than shipping as an explicit null. Pass no
+ * viewer for room-wide feeds — in `thread` and `history`, who a message was
+ * addressed to is information.
+ */
+export function renderMessage(message: Message, viewer?: string): Record<string, unknown> {
+  const toSelfOnly = viewer !== undefined && message.to.length === 1 && message.to[0] === viewer;
   return {
     id: message.id,
     thread_id: message.threadId,
     from: message.sender,
-    to: message.to,
+    ...(toSelfOnly ? {} : { to: message.to }),
     kind: message.kind,
-    subject: message.subject,
+    ...(message.subject === null ? {} : { subject: message.subject }),
     body: message.body,
     at: new Date(message.createdAt).toISOString(),
   };

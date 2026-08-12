@@ -1,0 +1,332 @@
+{
+  "generated_at": "2026-08-12T02:52:19.299Z",
+  "node": "24.14.1",
+  "morse_version": "0.3.0",
+  "room": "measure",
+  "tokens_estimate": "bytes / 4, rounded",
+  "scenarios": [
+    {
+      "name": "cold-start",
+      "totals": {
+        "calls": 4,
+        "result_bytes": 2023,
+        "est_tokens": 506,
+        "payload_bytes": 0,
+        "overhead_bytes": 2023
+      },
+      "calls": [
+        {
+          "seq": 1,
+          "agent": "backend",
+          "tool": "morse_register",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 1071,
+          "text": "{\n  \"you\": \"backend\",\n  \"room\": \"measure\",\n  \"registered\": {\n    \"name\": \"backend\",\n    \"role\": \"Backend Engineer\",\n    \"expertise\": \"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\n    \"skills\": [\n      \"sql\",\n      \"api-design\",\n      \"performance\"\n    ],\n    \"status\": \"idle\",\n    \"note\": null,\n    \"online\": true,\n    \"last_seen_seconds_ago\": 0,\n    \"harness\": \"claude-code\"\n  },\n  \"roster\": [\n    {\n      \"name\": \"backend\",\n      \"role\": \"Backend Engineer\",\n      \"expertise\": \"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\n      \"skills\": [\n        \"sql\",\n        \"api-design\",\n        \"performance\"\n      ],\n      \"status\": \"idle\",\n      \"note\": null,\n      \"online\": true,\n      \"last_seen_seconds_ago\": 0,\n      \"harness\": \"claude-code\"\n    }\n  ],\n  \"hint\": \"Check the roster before asking questions, and call morse_wait when you have nothing to do.\"\n}"
+        },
+        {
+          "seq": 2,
+          "agent": "backend",
+          "tool": "morse_roster",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 537,
+          "text": "{\n  \"room\": \"measure\",\n  \"you\": \"backend\",\n  \"agents\": [\n    {\n      \"name\": \"backend\",\n      \"role\": \"Backend Engineer\",\n      \"expertise\": \"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\n      \"skills\": [\n        \"sql\",\n        \"api-design\",\n        \"performance\"\n      ],\n      \"status\": \"idle\",\n      \"note\": null,\n      \"online\": true,\n      \"last_seen_seconds_ago\": 0,\n      \"harness\": \"claude-code\"\n    }\n  ],\n  \"online\": 1\n}"
+        },
+        {
+          "seq": 3,
+          "agent": "backend",
+          "tool": "morse_inbox",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 34,
+          "text": "{\n  \"messages\": [],\n  \"count\": 0\n}"
+        },
+        {
+          "seq": 4,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 1
+          },
+          "payload_bytes": 0,
+          "result_bytes": 381,
+          "text": "{\n  \"messages\": [],\n  \"waited_seconds\": 1,\n  \"room_status\": [\n    {\n      \"name\": \"backend\",\n      \"status\": \"idle\",\n      \"online\": true\n    }\n  ],\n  \"hint\": \"Nothing arrived. If you still have outstanding work, keep going. If you are waiting on someone, consider asking them directly. If your part is finished and everyone else is done, call morse_status with 'done' and stop.\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "busy-exchange",
+      "totals": {
+        "calls": 19,
+        "result_bytes": 14918,
+        "est_tokens": 3730,
+        "payload_bytes": 2757,
+        "overhead_bytes": 12161
+      },
+      "calls": [
+        {
+          "seq": 1,
+          "agent": "backend",
+          "tool": "morse_register",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 1526,
+          "text": "{\n  \"you\": \"backend\",\n  \"room\": \"measure\",\n  \"registered\": {\n    \"name\": \"backend\",\n    \"role\": \"Backend Engineer\",\n    \"expertise\": \"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\n    \"skills\": [\n      \"sql\",\n      \"api-design\",\n      \"performance\"\n    ],\n    \"status\": \"idle\",\n    \"note\": null,\n    \"online\": true,\n    \"last_seen_seconds_ago\": 0,\n    \"harness\": \"claude-code\"\n  },\n  \"roster\": [\n    {\n      \"name\": \"frontend\",\n      \"role\": \"Frontend Engineer\",\n      \"expertise\": \"Owns the web client: React components, state and routing, CSS layout and theming, and accessibility. Ask here about rendering and browser quirks.\",\n      \"skills\": [\n        \"react\",\n        \"css\",\n        \"accessibility\"\n      ],\n      \"status\": \"idle\",\n      \"note\": null,\n      \"online\": true,\n      \"last_seen_seconds_ago\": 0,\n      \"harness\": \"morse-test\"\n    },\n    {\n      \"name\": \"backend\",\n      \"role\": \"Backend Engineer\",\n      \"expertise\": \"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\n      \"skills\": [\n        \"sql\",\n        \"api-design\",\n        \"performance\"\n      ],\n      \"status\": \"idle\",\n      \"note\": null,\n      \"online\": true,\n      \"last_seen_seconds_ago\": 0,\n      \"harness\": \"claude-code\"\n    }\n  ],\n  \"hint\": \"Check the roster before asking questions, and call morse_wait when you have nothing to do.\"\n}"
+        },
+        {
+          "seq": 2,
+          "agent": "frontend",
+          "tool": "morse_register",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 1523,
+          "text": "{\n  \"you\": \"frontend\",\n  \"room\": \"measure\",\n  \"registered\": {\n    \"name\": \"frontend\",\n    \"role\": \"Frontend Engineer\",\n    \"expertise\": \"Owns the web client: React components, state and routing, CSS layout and theming, and accessibility. Ask here about rendering and browser quirks.\",\n    \"skills\": [\n      \"react\",\n      \"css\",\n      \"accessibility\"\n    ],\n    \"status\": \"idle\",\n    \"note\": null,\n    \"online\": true,\n    \"last_seen_seconds_ago\": 0,\n    \"harness\": \"claude-code\"\n  },\n  \"roster\": [\n    {\n      \"name\": \"frontend\",\n      \"role\": \"Frontend Engineer\",\n      \"expertise\": \"Owns the web client: React components, state and routing, CSS layout and theming, and accessibility. Ask here about rendering and browser quirks.\",\n      \"skills\": [\n        \"react\",\n        \"css\",\n        \"accessibility\"\n      ],\n      \"status\": \"idle\",\n      \"note\": null,\n      \"online\": true,\n      \"last_seen_seconds_ago\": 0,\n      \"harness\": \"claude-code\"\n    },\n    {\n      \"name\": \"backend\",\n      \"role\": \"Backend Engineer\",\n      \"expertise\": \"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\n      \"skills\": [\n        \"sql\",\n        \"api-design\",\n        \"performance\"\n      ],\n      \"status\": \"idle\",\n      \"note\": null,\n      \"online\": true,\n      \"last_seen_seconds_ago\": 0,\n      \"harness\": \"claude-code\"\n    }\n  ],\n  \"hint\": \"Check the roster before asking questions, and call morse_wait when you have nothing to do.\"\n}"
+        },
+        {
+          "seq": 3,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 0,
+          "result_bytes": 511,
+          "text": "{\n  \"messages\": [\n    {\n      \"id\": 3,\n      \"thread_id\": \"t-msphua40-1vjq-2\",\n      \"from\": \"frontend\",\n      \"to\": [\n        \"backend\"\n      ],\n      \"kind\": \"ask\",\n      \"subject\": null,\n      \"body\": \"For the /orders endpoint, what does the response body look like when the requested page is past the end of the data? I need to know whether the client should render an empty state or treat it as an error.\",\n      \"at\": \"2026-08-12T02:52:16.176Z\"\n    }\n  ],\n  \"hint\": \"Reply on a thread with morse_reply.\"\n}"
+        },
+        {
+          "seq": 4,
+          "agent": "frontend",
+          "tool": "morse_ask",
+          "args": {
+            "to": "backend",
+            "body": "For the /orders endpoint, what does the response body look like when the requested page is past the end of the data? I need to know whether the client should render an empty state or treat it as an error.",
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 204,
+          "result_bytes": 1124,
+          "text": "{\n  \"outcome\": \"replied\",\n  \"thread_id\": \"t-msphua40-1vjq-2\",\n  \"asked\": {\n    \"id\": 3,\n    \"thread_id\": \"t-msphua40-1vjq-2\",\n    \"from\": \"frontend\",\n    \"to\": [\n      \"backend\"\n    ],\n    \"kind\": \"ask\",\n    \"subject\": null,\n    \"body\": \"For the /orders endpoint, what does the response body look like when the requested page is past the end of the data? I need to know whether the client should render an empty state or treat it as an error.\",\n    \"at\": \"2026-08-12T02:52:16.176Z\"\n  },\n  \"reply\": {\n    \"id\": 4,\n    \"thread_id\": \"t-msphua40-1vjq-2\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"frontend\"\n    ],\n    \"kind\": \"reply\",\n    \"subject\": null,\n    \"body\": \"Past-the-end pages return a 200 with an empty items array, total_count still set, and next_cursor null - never a 404. Render the empty state, keep the pager visible, and disable the next button when next_cursor is null. Errors are reserved for malformed cursors, which come back as a 400 with a code field.\",\n    \"at\": \"2026-08-12T02:52:16.380Z\"\n  },\n  \"inbox\": [],\n  \"hint\": \"Answer received. Continue your work, or morse_reply on the thread to follow up.\"\n}"
+        },
+        {
+          "seq": 5,
+          "agent": "backend",
+          "tool": "morse_reply",
+          "args": {
+            "thread_id": "t-msphua40-1vjq-2",
+            "body": "Past-the-end pages return a 200 with an empty items array, total_count still set, and next_cursor null - never a 404. Render the empty state, keep the pager visible, and disable the next button when next_cursor is null. Errors are reserved for malformed cursors, which come back as a 400 with a code field."
+          },
+          "payload_bytes": 306,
+          "result_bytes": 530,
+          "text": "{\n  \"sent\": {\n    \"id\": 4,\n    \"thread_id\": \"t-msphua40-1vjq-2\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"frontend\"\n    ],\n    \"kind\": \"reply\",\n    \"subject\": null,\n    \"body\": \"Past-the-end pages return a 200 with an empty items array, total_count still set, and next_cursor null - never a 404. Render the empty state, keep the pager visible, and disable the next button when next_cursor is null. Errors are reserved for malformed cursors, which come back as a 400 with a code field.\",\n    \"at\": \"2026-08-12T02:52:16.380Z\"\n  }\n}"
+        },
+        {
+          "seq": 6,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 0,
+          "result_bytes": 514,
+          "text": "{\n  \"messages\": [\n    {\n      \"id\": 5,\n      \"thread_id\": \"t-msphuafb-1vjq-3\",\n      \"from\": \"frontend\",\n      \"to\": [\n        \"backend\"\n      ],\n      \"kind\": \"ask\",\n      \"subject\": null,\n      \"body\": \"Which column should the orders list sort by when the user has not chosen one? Created-at descending feels right, but I need to know what the index supports so pagination stays stable under concurrent writes.\",\n      \"at\": \"2026-08-12T02:52:16.583Z\"\n    }\n  ],\n  \"hint\": \"Reply on a thread with morse_reply.\"\n}"
+        },
+        {
+          "seq": 7,
+          "agent": "frontend",
+          "tool": "morse_ask",
+          "args": {
+            "to": "backend",
+            "body": "Which column should the orders list sort by when the user has not chosen one? Created-at descending feels right, but I need to know what the index supports so pagination stays stable under concurrent writes.",
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 207,
+          "result_bytes": 1123,
+          "text": "{\n  \"outcome\": \"replied\",\n  \"thread_id\": \"t-msphuafb-1vjq-3\",\n  \"asked\": {\n    \"id\": 5,\n    \"thread_id\": \"t-msphuafb-1vjq-3\",\n    \"from\": \"frontend\",\n    \"to\": [\n      \"backend\"\n    ],\n    \"kind\": \"ask\",\n    \"subject\": null,\n    \"body\": \"Which column should the orders list sort by when the user has not chosen one? Created-at descending feels right, but I need to know what the index supports so pagination stays stable under concurrent writes.\",\n    \"at\": \"2026-08-12T02:52:16.583Z\"\n  },\n  \"reply\": {\n    \"id\": 6,\n    \"thread_id\": \"t-msphuafb-1vjq-3\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"frontend\"\n    ],\n    \"kind\": \"reply\",\n    \"subject\": null,\n    \"body\": \"Default sort is created_at descending with id descending as the tiebreaker, and the composite index (created_at, id) backs it, so pagination stays stable under concurrent inserts. Do not offer arbitrary column sorts yet; only created_at and total have indexes today, and anything else would table-scan.\",\n    \"at\": \"2026-08-12T02:52:16.786Z\"\n  },\n  \"inbox\": [],\n  \"hint\": \"Answer received. Continue your work, or morse_reply on the thread to follow up.\"\n}"
+        },
+        {
+          "seq": 8,
+          "agent": "backend",
+          "tool": "morse_reply",
+          "args": {
+            "thread_id": "t-msphuafb-1vjq-3",
+            "body": "Default sort is created_at descending with id descending as the tiebreaker, and the composite index (created_at, id) backs it, so pagination stays stable under concurrent inserts. Do not offer arbitrary column sorts yet; only created_at and total have indexes today, and anything else would table-scan."
+          },
+          "payload_bytes": 302,
+          "result_bytes": 526,
+          "text": "{\n  \"sent\": {\n    \"id\": 6,\n    \"thread_id\": \"t-msphuafb-1vjq-3\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"frontend\"\n    ],\n    \"kind\": \"reply\",\n    \"subject\": null,\n    \"body\": \"Default sort is created_at descending with id descending as the tiebreaker, and the composite index (created_at, id) backs it, so pagination stays stable under concurrent inserts. Do not offer arbitrary column sorts yet; only created_at and total have indexes today, and anything else would table-scan.\",\n    \"at\": \"2026-08-12T02:52:16.786Z\"\n  }\n}"
+        },
+        {
+          "seq": 9,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 0,
+          "result_bytes": 513,
+          "text": "{\n  \"messages\": [\n    {\n      \"id\": 7,\n      \"thread_id\": \"t-msphuaqn-1vjq-4\",\n      \"from\": \"frontend\",\n      \"to\": [\n        \"backend\"\n      ],\n      \"kind\": \"ask\",\n      \"subject\": null,\n      \"body\": \"When an order row has no customer attached, does the API return the customer field as null or omit the key entirely? The list view needs to know which shape to expect before I write the empty-cell renderer.\",\n      \"at\": \"2026-08-12T02:52:16.991Z\"\n    }\n  ],\n  \"hint\": \"Reply on a thread with morse_reply.\"\n}"
+        },
+        {
+          "seq": 10,
+          "agent": "frontend",
+          "tool": "morse_ask",
+          "args": {
+            "to": "backend",
+            "body": "When an order row has no customer attached, does the API return the customer field as null or omit the key entirely? The list view needs to know which shape to expect before I write the empty-cell renderer.",
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 206,
+          "result_bytes": 1127,
+          "text": "{\n  \"outcome\": \"replied\",\n  \"thread_id\": \"t-msphuaqn-1vjq-4\",\n  \"asked\": {\n    \"id\": 7,\n    \"thread_id\": \"t-msphuaqn-1vjq-4\",\n    \"from\": \"frontend\",\n    \"to\": [\n      \"backend\"\n    ],\n    \"kind\": \"ask\",\n    \"subject\": null,\n    \"body\": \"When an order row has no customer attached, does the API return the customer field as null or omit the key entirely? The list view needs to know which shape to expect before I write the empty-cell renderer.\",\n    \"at\": \"2026-08-12T02:52:16.991Z\"\n  },\n  \"reply\": {\n    \"id\": 8,\n    \"thread_id\": \"t-msphuaqn-1vjq-4\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"frontend\"\n    ],\n    \"kind\": \"reply\",\n    \"subject\": null,\n    \"body\": \"The customer field is always present and is null when no customer is attached - we never omit keys, so your renderer can rely on the shape. Treat null as a walk-in sale and render a dash in the cell. The same rule holds across the API: absent data is an explicit null, never a missing property, by contract.\",\n    \"at\": \"2026-08-12T02:52:17.194Z\"\n  },\n  \"inbox\": [],\n  \"hint\": \"Answer received. Continue your work, or morse_reply on the thread to follow up.\"\n}"
+        },
+        {
+          "seq": 11,
+          "agent": "backend",
+          "tool": "morse_reply",
+          "args": {
+            "thread_id": "t-msphuaqn-1vjq-4",
+            "body": "The customer field is always present and is null when no customer is attached - we never omit keys, so your renderer can rely on the shape. Treat null as a walk-in sale and render a dash in the cell. The same rule holds across the API: absent data is an explicit null, never a missing property, by contract."
+          },
+          "payload_bytes": 307,
+          "result_bytes": 531,
+          "text": "{\n  \"sent\": {\n    \"id\": 8,\n    \"thread_id\": \"t-msphuaqn-1vjq-4\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"frontend\"\n    ],\n    \"kind\": \"reply\",\n    \"subject\": null,\n    \"body\": \"The customer field is always present and is null when no customer is attached - we never omit keys, so your renderer can rely on the shape. Treat null as a walk-in sale and render a dash in the cell. The same rule holds across the API: absent data is an explicit null, never a missing property, by contract.\",\n    \"at\": \"2026-08-12T02:52:17.194Z\"\n  }\n}"
+        },
+        {
+          "seq": 12,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 0,
+          "result_bytes": 514,
+          "text": "{\n  \"messages\": [\n    {\n      \"id\": 9,\n      \"thread_id\": \"t-msphub1y-1vjq-5\",\n      \"from\": \"frontend\",\n      \"to\": [\n        \"backend\"\n      ],\n      \"kind\": \"ask\",\n      \"subject\": null,\n      \"body\": \"What is the maximum page size the API will accept for /orders, and does it clamp silently or reject with a 400? I want the page-size selector to only offer values the backend will actually honour at runtime.\",\n      \"at\": \"2026-08-12T02:52:17.398Z\"\n    }\n  ],\n  \"hint\": \"Reply on a thread with morse_reply.\"\n}"
+        },
+        {
+          "seq": 13,
+          "agent": "frontend",
+          "tool": "morse_ask",
+          "args": {
+            "to": "backend",
+            "body": "What is the maximum page size the API will accept for /orders, and does it clamp silently or reject with a 400? I want the page-size selector to only offer values the backend will actually honour at runtime.",
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 207,
+          "result_bytes": 1125,
+          "text": "{\n  \"outcome\": \"replied\",\n  \"thread_id\": \"t-msphub1y-1vjq-5\",\n  \"asked\": {\n    \"id\": 9,\n    \"thread_id\": \"t-msphub1y-1vjq-5\",\n    \"from\": \"frontend\",\n    \"to\": [\n      \"backend\"\n    ],\n    \"kind\": \"ask\",\n    \"subject\": null,\n    \"body\": \"What is the maximum page size the API will accept for /orders, and does it clamp silently or reject with a 400? I want the page-size selector to only offer values the backend will actually honour at runtime.\",\n    \"at\": \"2026-08-12T02:52:17.398Z\"\n  },\n  \"reply\": {\n    \"id\": 10,\n    \"thread_id\": \"t-msphub1y-1vjq-5\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"frontend\"\n    ],\n    \"kind\": \"reply\",\n    \"subject\": null,\n    \"body\": \"Page size is clamped to 100: anything larger is silently reduced, never rejected, and the effective value is echoed back as page_size in the response meta. Offer 10, 25, 50, and 100 in the selector and read the echoed value rather than assuming. Zero and negatives get a 400 with code invalid_page_size.\",\n    \"at\": \"2026-08-12T02:52:17.601Z\"\n  },\n  \"inbox\": [],\n  \"hint\": \"Answer received. Continue your work, or morse_reply on the thread to follow up.\"\n}"
+        },
+        {
+          "seq": 14,
+          "agent": "backend",
+          "tool": "morse_reply",
+          "args": {
+            "thread_id": "t-msphub1y-1vjq-5",
+            "body": "Page size is clamped to 100: anything larger is silently reduced, never rejected, and the effective value is echoed back as page_size in the response meta. Offer 10, 25, 50, and 100 in the selector and read the echoed value rather than assuming. Zero and negatives get a 400 with code invalid_page_size."
+          },
+          "payload_bytes": 303,
+          "result_bytes": 528,
+          "text": "{\n  \"sent\": {\n    \"id\": 10,\n    \"thread_id\": \"t-msphub1y-1vjq-5\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"frontend\"\n    ],\n    \"kind\": \"reply\",\n    \"subject\": null,\n    \"body\": \"Page size is clamped to 100: anything larger is silently reduced, never rejected, and the effective value is echoed back as page_size in the response meta. Offer 10, 25, 50, and 100 in the selector and read the echoed value rather than assuming. Zero and negatives get a 400 with code invalid_page_size.\",\n    \"at\": \"2026-08-12T02:52:17.601Z\"\n  }\n}"
+        },
+        {
+          "seq": 15,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 0,
+          "result_bytes": 515,
+          "text": "{\n  \"messages\": [\n    {\n      \"id\": 11,\n      \"thread_id\": \"t-msphubd8-1vjq-6\",\n      \"from\": \"frontend\",\n      \"to\": [\n        \"backend\"\n      ],\n      \"kind\": \"ask\",\n      \"subject\": null,\n      \"body\": \"Do cursor tokens for /orders pagination expire, and if so how should the client recover when a stored cursor goes stale? I need to decide between silently restarting at page one and showing a refresh prompt.\",\n      \"at\": \"2026-08-12T02:52:17.804Z\"\n    }\n  ],\n  \"hint\": \"Reply on a thread with morse_reply.\"\n}"
+        },
+        {
+          "seq": 16,
+          "agent": "frontend",
+          "tool": "morse_ask",
+          "args": {
+            "to": "backend",
+            "body": "Do cursor tokens for /orders pagination expire, and if so how should the client recover when a stored cursor goes stale? I need to decide between silently restarting at page one and showing a refresh prompt.",
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 207,
+          "result_bytes": 1130,
+          "text": "{\n  \"outcome\": \"replied\",\n  \"thread_id\": \"t-msphubd8-1vjq-6\",\n  \"asked\": {\n    \"id\": 11,\n    \"thread_id\": \"t-msphubd8-1vjq-6\",\n    \"from\": \"frontend\",\n    \"to\": [\n      \"backend\"\n    ],\n    \"kind\": \"ask\",\n    \"subject\": null,\n    \"body\": \"Do cursor tokens for /orders pagination expire, and if so how should the client recover when a stored cursor goes stale? I need to decide between silently restarting at page one and showing a refresh prompt.\",\n    \"at\": \"2026-08-12T02:52:17.804Z\"\n  },\n  \"reply\": {\n    \"id\": 12,\n    \"thread_id\": \"t-msphubd8-1vjq-6\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"frontend\"\n    ],\n    \"kind\": \"reply\",\n    \"subject\": null,\n    \"body\": \"Cursors are signed and expire after 24 hours; a stale or tampered one gets a 410 with code cursor_expired, distinct from the 400 for malformed input. On a 410, silently restart at page one and show a toast that results were refreshed. Do not retry the dead cursor - the signature check makes that pointless.\",\n    \"at\": \"2026-08-12T02:52:18.008Z\"\n  },\n  \"inbox\": [],\n  \"hint\": \"Answer received. Continue your work, or morse_reply on the thread to follow up.\"\n}"
+        },
+        {
+          "seq": 17,
+          "agent": "backend",
+          "tool": "morse_reply",
+          "args": {
+            "thread_id": "t-msphubd8-1vjq-6",
+            "body": "Cursors are signed and expire after 24 hours; a stale or tampered one gets a 410 with code cursor_expired, distinct from the 400 for malformed input. On a 410, silently restart at page one and show a toast that results were refreshed. Do not retry the dead cursor - the signature check makes that pointless."
+          },
+          "payload_bytes": 307,
+          "result_bytes": 532,
+          "text": "{\n  \"sent\": {\n    \"id\": 12,\n    \"thread_id\": \"t-msphubd8-1vjq-6\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"frontend\"\n    ],\n    \"kind\": \"reply\",\n    \"subject\": null,\n    \"body\": \"Cursors are signed and expire after 24 hours; a stale or tampered one gets a 410 with code cursor_expired, distinct from the 400 for malformed input. On a 410, silently restart at page one and show a toast that results were refreshed. Do not retry the dead cursor - the signature check makes that pointless.\",\n    \"at\": \"2026-08-12T02:52:18.008Z\"\n  }\n}"
+        },
+        {
+          "seq": 18,
+          "agent": "backend",
+          "tool": "morse_send",
+          "args": {
+            "to": [
+              "*"
+            ],
+            "body": "Heads up team: the /orders contract is settled - empty pages return 200 with an empty items array, page size clamps at 100, and cursors expire after 24 hours with a 410. Details are on the ask threads."
+          },
+          "payload_bytes": 201,
+          "result_bytes": 518,
+          "text": "{\n  \"sent\": {\n    \"id\": 13,\n    \"thread_id\": \"t-msphuboj-1vjp-2\",\n    \"from\": \"backend\",\n    \"to\": [\n      \"*\"\n    ],\n    \"kind\": \"broadcast\",\n    \"subject\": null,\n    \"body\": \"Heads up team: the /orders contract is settled - empty pages return 200 with an empty items array, page size clamps at 100, and cursors expire after 24 hours with a 410. Details are on the ask threads.\",\n    \"at\": \"2026-08-12T02:52:18.211Z\"\n  },\n  \"hint\": \"morse_send does not wait. Use morse_ask if you need the answer before continuing.\"\n}"
+        },
+        {
+          "seq": 19,
+          "agent": "frontend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 5
+          },
+          "payload_bytes": 0,
+          "result_bytes": 508,
+          "text": "{\n  \"messages\": [\n    {\n      \"id\": 13,\n      \"thread_id\": \"t-msphuboj-1vjp-2\",\n      \"from\": \"backend\",\n      \"to\": [\n        \"*\"\n      ],\n      \"kind\": \"broadcast\",\n      \"subject\": null,\n      \"body\": \"Heads up team: the /orders contract is settled - empty pages return 200 with an empty items array, page size clamps at 100, and cursors expire after 24 hours with a 410. Details are on the ask threads.\",\n      \"at\": \"2026-08-12T02:52:18.211Z\"\n    }\n  ],\n  \"hint\": \"Reply on a thread with morse_reply.\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "idle-hour",
+      "totals": {
+        "calls": 2,
+        "result_bytes": 1452,
+        "est_tokens": 363,
+        "payload_bytes": 0,
+        "overhead_bytes": 1452
+      },
+      "projection": {
+        "turns_per_hour": 72,
+        "empty_wait_bytes": 381,
+        "hourly_bytes": 27432,
+        "hourly_est_tokens": 6858
+      },
+      "calls": [
+        {
+          "seq": 1,
+          "agent": "backend",
+          "tool": "morse_register",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 1071,
+          "text": "{\n  \"you\": \"backend\",\n  \"room\": \"measure\",\n  \"registered\": {\n    \"name\": \"backend\",\n    \"role\": \"Backend Engineer\",\n    \"expertise\": \"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\n    \"skills\": [\n      \"sql\",\n      \"api-design\",\n      \"performance\"\n    ],\n    \"status\": \"idle\",\n    \"note\": null,\n    \"online\": true,\n    \"last_seen_seconds_ago\": 0,\n    \"harness\": \"claude-code\"\n  },\n  \"roster\": [\n    {\n      \"name\": \"backend\",\n      \"role\": \"Backend Engineer\",\n      \"expertise\": \"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\n      \"skills\": [\n        \"sql\",\n        \"api-design\",\n        \"performance\"\n      ],\n      \"status\": \"idle\",\n      \"note\": null,\n      \"online\": true,\n      \"last_seen_seconds_ago\": 0,\n      \"harness\": \"claude-code\"\n    }\n  ],\n  \"hint\": \"Check the roster before asking questions, and call morse_wait when you have nothing to do.\"\n}"
+        },
+        {
+          "seq": 2,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 1
+          },
+          "payload_bytes": 0,
+          "result_bytes": 381,
+          "text": "{\n  \"messages\": [],\n  \"waited_seconds\": 1,\n  \"room_status\": [\n    {\n      \"name\": \"backend\",\n      \"status\": \"idle\",\n      \"online\": true\n    }\n  ],\n  \"hint\": \"Nothing arrived. If you still have outstanding work, keep going. If you are waiting on someone, consider asking them directly. If your part is finished and everyone else is done, call morse_status with 'done' and stop.\"\n}"
+        }
+      ]
+    }
+  ]
+}

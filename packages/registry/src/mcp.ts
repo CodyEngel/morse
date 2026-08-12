@@ -75,7 +75,7 @@ export function registryHandler(registry: FileRegistry) {
         return {
           room,
           you: me,
-          agents: roster.map(renderAgent),
+          agents: roster.map(renderAgentBrief),
           online: roster.filter((a) => a.online).length,
         };
       }
@@ -90,8 +90,11 @@ export function registryHandler(registry: FileRegistry) {
         const outstanding = roster.filter((a) => a.name !== me && a.status !== "done" && a.online);
         return {
           status,
-          note: args.note ?? null,
-          still_working: outstanding.map((a) => ({ name: a.name, status: a.status, note: a.statusNote })),
+          still_working: outstanding.map((a) => ({
+            name: a.name,
+            status: a.status,
+            ...(a.statusNote === null ? {} : { note: a.statusNote }),
+          })),
           hint:
             outstanding.length === 0
               ? "Everyone online is done. If nothing is addressed to you, you can stop."
@@ -119,5 +122,28 @@ export function renderAgent(agent: Agent): Record<string, unknown> {
     ...(agent.online ? {} : { presence: agent.alive ? "running, not listening" : "offline" }),
     last_seen_seconds_ago: Math.round((Date.now() - agent.lastSeen) / 1000),
     harness: agent.harness,
+  };
+}
+
+/**
+ * The model-facing rendering: the routing signal and nothing else.
+ *
+ * `renderAgent` above is the operator's view — pids, harnesses, seconds since
+ * last seen — and it is the `--json` contract, so it does not change. Models
+ * pay for every key on every roster in every session, and they route on
+ * capabilities: what someone owns, whether they are here, how their work is
+ * going. Skills flatten to one space-joined string so a roster row is all
+ * primitives — which is what lets a tabular output format pack it tight.
+ */
+export function renderAgentBrief(agent: Agent): Record<string, unknown> {
+  return {
+    name: agent.name,
+    ...(agent.role === null ? {} : { role: agent.role }),
+    ...(agent.description === null ? {} : { expertise: agent.description }),
+    ...(agent.skills.length === 0 ? {} : { skills: agent.skills.join(" ") }),
+    status: agent.status,
+    ...(agent.statusNote === null ? {} : { note: agent.statusNote }),
+    online: agent.online,
+    ...(agent.online ? {} : { presence: agent.alive ? "running, not listening" : "offline" }),
   };
 }

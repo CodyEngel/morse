@@ -1,0 +1,413 @@
+{
+  "generated_at": "2026-08-12T03:07:49.727Z",
+  "node": "24.14.1",
+  "morse_version": "0.4.0",
+  "room": "measure",
+  "tokens_estimate": "bytes / 4, rounded",
+  "scenarios": [
+    {
+      "name": "cold-start",
+      "totals": {
+        "calls": 4,
+        "result_bytes": 1148,
+        "toon_bytes": 1082,
+        "est_tokens": 287,
+        "est_toon_tokens": 271,
+        "payload_bytes": 0,
+        "overhead_bytes": 1148
+      },
+      "calls": [
+        {
+          "seq": 1,
+          "agent": "backend",
+          "tool": "morse_register",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 587,
+          "toon_bytes": 558,
+          "text": "{\"you\":\"backend\",\"room\":\"measure\",\"roster\":[{\"name\":\"backend\",\"role\":\"Backend Engineer\",\"expertise\":\"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\"skills\":\"sql api-design performance\",\"status\":\"idle\",\"online\":true}],\"messages\":[],\"hint\":\"You are the first one here, which is normal. Teammates and instructions arrive over morse — park with morse_wait (a long timeout_seconds is fine) and stay parked until someone speaks. Do not set status done before you have been given work.\"}"
+        },
+        {
+          "seq": 2,
+          "agent": "backend",
+          "tool": "morse_roster",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 333,
+          "toon_bytes": 305,
+          "text": "{\"room\":\"measure\",\"you\":\"backend\",\"agents\":[{\"name\":\"backend\",\"role\":\"Backend Engineer\",\"expertise\":\"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\"skills\":\"sql api-design performance\",\"status\":\"idle\",\"online\":true}],\"online\":1}"
+        },
+        {
+          "seq": 3,
+          "agent": "backend",
+          "tool": "morse_inbox",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 25,
+          "toon_bytes": 21,
+          "text": "{\"messages\":[],\"count\":0}"
+        },
+        {
+          "seq": 4,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 1
+          },
+          "payload_bytes": 0,
+          "result_bytes": 203,
+          "toon_bytes": 198,
+          "text": "{\"messages\":[],\"waited_seconds\":1,\"hint\":\"Nothing yet — you have not been given work, and being early is normal. Park again with morse_wait and a long timeout_seconds. Do not set status done or stop.\"}"
+        }
+      ]
+    },
+    {
+      "name": "cold-start-0.4",
+      "totals": {
+        "calls": 2,
+        "result_bytes": 790,
+        "toon_bytes": 756,
+        "est_tokens": 198,
+        "est_toon_tokens": 189,
+        "payload_bytes": 0,
+        "overhead_bytes": 790
+      },
+      "calls": [
+        {
+          "seq": 1,
+          "agent": "backend",
+          "tool": "morse_register",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 587,
+          "toon_bytes": 558,
+          "text": "{\"you\":\"backend\",\"room\":\"measure\",\"roster\":[{\"name\":\"backend\",\"role\":\"Backend Engineer\",\"expertise\":\"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\"skills\":\"sql api-design performance\",\"status\":\"idle\",\"online\":true}],\"messages\":[],\"hint\":\"You are the first one here, which is normal. Teammates and instructions arrive over morse — park with morse_wait (a long timeout_seconds is fine) and stay parked until someone speaks. Do not set status done before you have been given work.\"}"
+        },
+        {
+          "seq": 2,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 1
+          },
+          "payload_bytes": 0,
+          "result_bytes": 203,
+          "toon_bytes": 198,
+          "text": "{\"messages\":[],\"waited_seconds\":1,\"hint\":\"Nothing yet — you have not been given work, and being early is normal. Park again with morse_wait and a long timeout_seconds. Do not set status done or stop.\"}"
+        }
+      ]
+    },
+    {
+      "name": "busy-exchange",
+      "totals": {
+        "calls": 19,
+        "result_bytes": 6689,
+        "toon_bytes": 6306,
+        "est_tokens": 1672,
+        "est_toon_tokens": 1577,
+        "payload_bytes": 2757,
+        "overhead_bytes": 3932
+      },
+      "calls": [
+        {
+          "seq": 1,
+          "agent": "backend",
+          "tool": "morse_register",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 716,
+          "toon_bytes": 626,
+          "text": "{\"you\":\"backend\",\"room\":\"measure\",\"roster\":[{\"name\":\"backend\",\"role\":\"Backend Engineer\",\"expertise\":\"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\"skills\":\"sql api-design performance\",\"status\":\"idle\",\"online\":true},{\"name\":\"frontend\",\"role\":\"Frontend Engineer\",\"expertise\":\"Owns the web client: React components, state and routing, CSS layout and theming, and accessibility. Ask here about rendering and browser quirks.\",\"skills\":\"react css accessibility\",\"status\":\"idle\",\"online\":true}],\"messages\":[],\"hint\":\"Handle anything in messages, then work; park with morse_wait whenever you have nothing left to do.\"}"
+        },
+        {
+          "seq": 2,
+          "agent": "frontend",
+          "tool": "morse_register",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 717,
+          "toon_bytes": 627,
+          "text": "{\"you\":\"frontend\",\"room\":\"measure\",\"roster\":[{\"name\":\"backend\",\"role\":\"Backend Engineer\",\"expertise\":\"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\"skills\":\"sql api-design performance\",\"status\":\"idle\",\"online\":true},{\"name\":\"frontend\",\"role\":\"Frontend Engineer\",\"expertise\":\"Owns the web client: React components, state and routing, CSS layout and theming, and accessibility. Ask here about rendering and browser quirks.\",\"skills\":\"react css accessibility\",\"status\":\"idle\",\"online\":true}],\"messages\":[],\"hint\":\"Handle anything in messages, then work; park with morse_wait whenever you have nothing left to do.\"}"
+        },
+        {
+          "seq": 3,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 0,
+          "result_bytes": 455,
+          "toon_bytes": 422,
+          "text": "{\"messages\":[{\"id\":3,\"thread_id\":\"t-mspie793-err-2\",\"from\":\"frontend\",\"kind\":\"ask\",\"body\":\"For the /orders endpoint, what does the response body look like when the requested page is past the end of the data? I need to know whether the client should render an empty state or treat it as an error.\",\"at\":\"2026-08-12T03:07:45.591Z\"}],\"hint\":\"Reply on a thread with morse_reply.\",\"changed\":[{\"name\":\"frontend\",\"status\":\"blocked\",\"note\":\"waiting on backend\"}]}"
+        },
+        {
+          "seq": 4,
+          "agent": "frontend",
+          "tool": "morse_ask",
+          "args": {
+            "to": "backend",
+            "body": "For the /orders endpoint, what does the response body look like when the requested page is past the end of the data? I need to know whether the client should render an empty state or treat it as an error.",
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 204,
+          "result_bytes": 580,
+          "toon_bytes": 567,
+          "text": "{\"outcome\":\"replied\",\"thread_id\":\"t-mspie793-err-2\",\"reply\":{\"id\":4,\"thread_id\":\"t-mspie793-err-2\",\"from\":\"backend\",\"kind\":\"reply\",\"body\":\"Past-the-end pages return a 200 with an empty items array, total_count still set, and next_cursor null - never a 404. Render the empty state, keep the pager visible, and disable the next button when next_cursor is null. Errors are reserved for malformed cursors, which come back as a 400 with a code field.\",\"at\":\"2026-08-12T03:07:45.796Z\"},\"inbox\":[],\"hint\":\"Answer received. Continue your work, or morse_reply on the thread to follow up.\"}"
+        },
+        {
+          "seq": 5,
+          "agent": "backend",
+          "tool": "morse_reply",
+          "args": {
+            "thread_id": "t-mspie793-err-2",
+            "body": "Past-the-end pages return a 200 with an empty items array, total_count still set, and next_cursor null - never a 404. Render the empty state, keep the pager visible, and disable the next button when next_cursor is null. Errors are reserved for malformed cursors, which come back as a 400 with a code field."
+          },
+          "payload_bytes": 306,
+          "result_bytes": 66,
+          "toon_bytes": 61,
+          "text": "{\"sent\":{\"id\":4,\"thread_id\":\"t-mspie793-err-2\",\"to\":[\"frontend\"]}}"
+        },
+        {
+          "seq": 6,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 0,
+          "result_bytes": 334,
+          "toon_bytes": 315,
+          "text": "{\"messages\":[{\"id\":5,\"thread_id\":\"t-mspie7kj-err-3\",\"from\":\"frontend\",\"kind\":\"ask\",\"body\":\"Which column should the orders list sort by when the user has not chosen one? Created-at descending feels right, but I need to know what the index supports so pagination stays stable under concurrent writes.\",\"at\":\"2026-08-12T03:07:46.003Z\"}]}"
+        },
+        {
+          "seq": 7,
+          "agent": "frontend",
+          "tool": "morse_ask",
+          "args": {
+            "to": "backend",
+            "body": "Which column should the orders list sort by when the user has not chosen one? Created-at descending feels right, but I need to know what the index supports so pagination stays stable under concurrent writes.",
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 207,
+          "result_bytes": 487,
+          "toon_bytes": 475,
+          "text": "{\"outcome\":\"replied\",\"thread_id\":\"t-mspie7kj-err-3\",\"reply\":{\"id\":6,\"thread_id\":\"t-mspie7kj-err-3\",\"from\":\"backend\",\"kind\":\"reply\",\"body\":\"Default sort is created_at descending with id descending as the tiebreaker, and the composite index (created_at, id) backs it, so pagination stays stable under concurrent inserts. Do not offer arbitrary column sorts yet; only created_at and total have indexes today, and anything else would table-scan.\",\"at\":\"2026-08-12T03:07:46.209Z\"},\"inbox\":[]}"
+        },
+        {
+          "seq": 8,
+          "agent": "backend",
+          "tool": "morse_reply",
+          "args": {
+            "thread_id": "t-mspie7kj-err-3",
+            "body": "Default sort is created_at descending with id descending as the tiebreaker, and the composite index (created_at, id) backs it, so pagination stays stable under concurrent inserts. Do not offer arbitrary column sorts yet; only created_at and total have indexes today, and anything else would table-scan."
+          },
+          "payload_bytes": 302,
+          "result_bytes": 66,
+          "toon_bytes": 61,
+          "text": "{\"sent\":{\"id\":6,\"thread_id\":\"t-mspie7kj-err-3\",\"to\":[\"frontend\"]}}"
+        },
+        {
+          "seq": 9,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 0,
+          "result_bytes": 333,
+          "toon_bytes": 314,
+          "text": "{\"messages\":[{\"id\":7,\"thread_id\":\"t-mspie7vy-err-4\",\"from\":\"frontend\",\"kind\":\"ask\",\"body\":\"When an order row has no customer attached, does the API return the customer field as null or omit the key entirely? The list view needs to know which shape to expect before I write the empty-cell renderer.\",\"at\":\"2026-08-12T03:07:46.414Z\"}]}"
+        },
+        {
+          "seq": 10,
+          "agent": "frontend",
+          "tool": "morse_ask",
+          "args": {
+            "to": "backend",
+            "body": "When an order row has no customer attached, does the API return the customer field as null or omit the key entirely? The list view needs to know which shape to expect before I write the empty-cell renderer.",
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 206,
+          "result_bytes": 492,
+          "toon_bytes": 480,
+          "text": "{\"outcome\":\"replied\",\"thread_id\":\"t-mspie7vy-err-4\",\"reply\":{\"id\":8,\"thread_id\":\"t-mspie7vy-err-4\",\"from\":\"backend\",\"kind\":\"reply\",\"body\":\"The customer field is always present and is null when no customer is attached - we never omit keys, so your renderer can rely on the shape. Treat null as a walk-in sale and render a dash in the cell. The same rule holds across the API: absent data is an explicit null, never a missing property, by contract.\",\"at\":\"2026-08-12T03:07:46.618Z\"},\"inbox\":[]}"
+        },
+        {
+          "seq": 11,
+          "agent": "backend",
+          "tool": "morse_reply",
+          "args": {
+            "thread_id": "t-mspie7vy-err-4",
+            "body": "The customer field is always present and is null when no customer is attached - we never omit keys, so your renderer can rely on the shape. Treat null as a walk-in sale and render a dash in the cell. The same rule holds across the API: absent data is an explicit null, never a missing property, by contract."
+          },
+          "payload_bytes": 307,
+          "result_bytes": 66,
+          "toon_bytes": 61,
+          "text": "{\"sent\":{\"id\":8,\"thread_id\":\"t-mspie7vy-err-4\",\"to\":[\"frontend\"]}}"
+        },
+        {
+          "seq": 12,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 0,
+          "result_bytes": 334,
+          "toon_bytes": 315,
+          "text": "{\"messages\":[{\"id\":9,\"thread_id\":\"t-mspie87b-err-5\",\"from\":\"frontend\",\"kind\":\"ask\",\"body\":\"What is the maximum page size the API will accept for /orders, and does it clamp silently or reject with a 400? I want the page-size selector to only offer values the backend will actually honour at runtime.\",\"at\":\"2026-08-12T03:07:46.823Z\"}]}"
+        },
+        {
+          "seq": 13,
+          "agent": "frontend",
+          "tool": "morse_ask",
+          "args": {
+            "to": "backend",
+            "body": "What is the maximum page size the API will accept for /orders, and does it clamp silently or reject with a 400? I want the page-size selector to only offer values the backend will actually honour at runtime.",
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 207,
+          "result_bytes": 489,
+          "toon_bytes": 477,
+          "text": "{\"outcome\":\"replied\",\"thread_id\":\"t-mspie87b-err-5\",\"reply\":{\"id\":10,\"thread_id\":\"t-mspie87b-err-5\",\"from\":\"backend\",\"kind\":\"reply\",\"body\":\"Page size is clamped to 100: anything larger is silently reduced, never rejected, and the effective value is echoed back as page_size in the response meta. Offer 10, 25, 50, and 100 in the selector and read the echoed value rather than assuming. Zero and negatives get a 400 with code invalid_page_size.\",\"at\":\"2026-08-12T03:07:47.028Z\"},\"inbox\":[]}"
+        },
+        {
+          "seq": 14,
+          "agent": "backend",
+          "tool": "morse_reply",
+          "args": {
+            "thread_id": "t-mspie87b-err-5",
+            "body": "Page size is clamped to 100: anything larger is silently reduced, never rejected, and the effective value is echoed back as page_size in the response meta. Offer 10, 25, 50, and 100 in the selector and read the echoed value rather than assuming. Zero and negatives get a 400 with code invalid_page_size."
+          },
+          "payload_bytes": 303,
+          "result_bytes": 67,
+          "toon_bytes": 62,
+          "text": "{\"sent\":{\"id\":10,\"thread_id\":\"t-mspie87b-err-5\",\"to\":[\"frontend\"]}}"
+        },
+        {
+          "seq": 15,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 0,
+          "result_bytes": 335,
+          "toon_bytes": 316,
+          "text": "{\"messages\":[{\"id\":11,\"thread_id\":\"t-mspie8in-err-6\",\"from\":\"frontend\",\"kind\":\"ask\",\"body\":\"Do cursor tokens for /orders pagination expire, and if so how should the client recover when a stored cursor goes stale? I need to decide between silently restarting at page one and showing a refresh prompt.\",\"at\":\"2026-08-12T03:07:47.231Z\"}]}"
+        },
+        {
+          "seq": 16,
+          "agent": "frontend",
+          "tool": "morse_ask",
+          "args": {
+            "to": "backend",
+            "body": "Do cursor tokens for /orders pagination expire, and if so how should the client recover when a stored cursor goes stale? I need to decide between silently restarting at page one and showing a refresh prompt.",
+            "timeout_seconds": 30
+          },
+          "payload_bytes": 207,
+          "result_bytes": 493,
+          "toon_bytes": 481,
+          "text": "{\"outcome\":\"replied\",\"thread_id\":\"t-mspie8in-err-6\",\"reply\":{\"id\":12,\"thread_id\":\"t-mspie8in-err-6\",\"from\":\"backend\",\"kind\":\"reply\",\"body\":\"Cursors are signed and expire after 24 hours; a stale or tampered one gets a 410 with code cursor_expired, distinct from the 400 for malformed input. On a 410, silently restart at page one and show a toast that results were refreshed. Do not retry the dead cursor - the signature check makes that pointless.\",\"at\":\"2026-08-12T03:07:47.436Z\"},\"inbox\":[]}"
+        },
+        {
+          "seq": 17,
+          "agent": "backend",
+          "tool": "morse_reply",
+          "args": {
+            "thread_id": "t-mspie8in-err-6",
+            "body": "Cursors are signed and expire after 24 hours; a stale or tampered one gets a 410 with code cursor_expired, distinct from the 400 for malformed input. On a 410, silently restart at page one and show a toast that results were refreshed. Do not retry the dead cursor - the signature check makes that pointless."
+          },
+          "payload_bytes": 307,
+          "result_bytes": 67,
+          "toon_bytes": 62,
+          "text": "{\"sent\":{\"id\":12,\"thread_id\":\"t-mspie8in-err-6\",\"to\":[\"frontend\"]}}"
+        },
+        {
+          "seq": 18,
+          "agent": "backend",
+          "tool": "morse_send",
+          "args": {
+            "to": [
+              "*"
+            ],
+            "body": "Heads up team: the /orders contract is settled - empty pages return 200 with an empty items array, page size clamps at 100, and cursors expire after 24 hours with a 410. Details are on the ask threads."
+          },
+          "payload_bytes": 201,
+          "result_bytes": 202,
+          "toon_bytes": 187,
+          "text": "{\"sent\":{\"id\":13,\"thread_id\":\"t-mspie8u1-erq-2\",\"to\":[\"*\"]},\"hint\":\"morse_send does not wait. Use morse_ask if you need the answer before continuing.\",\"changed\":[{\"name\":\"frontend\",\"status\":\"working\"}]}"
+        },
+        {
+          "seq": 19,
+          "agent": "frontend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 5
+          },
+          "payload_bytes": 0,
+          "result_bytes": 390,
+          "toon_bytes": 397,
+          "text": "{\"messages\":[{\"id\":13,\"thread_id\":\"t-mspie8u1-erq-2\",\"from\":\"backend\",\"to\":[\"*\"],\"kind\":\"broadcast\",\"body\":\"Heads up team: the /orders contract is settled - empty pages return 200 with an empty items array, page size clamps at 100, and cursors expire after 24 hours with a 410. Details are on the ask threads.\",\"at\":\"2026-08-12T03:07:47.641Z\"}],\"hint\":\"Reply on a thread with morse_reply.\"}"
+        }
+      ]
+    },
+    {
+      "name": "idle-hour",
+      "totals": {
+        "calls": 3,
+        "result_bytes": 824,
+        "toon_bytes": 786,
+        "est_tokens": 206,
+        "est_toon_tokens": 197,
+        "payload_bytes": 0,
+        "overhead_bytes": 824
+      },
+      "projection": {
+        "turns_per_hour": 72,
+        "turns_per_hour_270": 13,
+        "empty_wait_bytes": 34,
+        "empty_wait_toon_bytes": 30,
+        "hourly_bytes": 2448,
+        "hourly_bytes_04": 390
+      },
+      "calls": [
+        {
+          "seq": 1,
+          "agent": "backend",
+          "tool": "morse_register",
+          "args": {},
+          "payload_bytes": 0,
+          "result_bytes": 587,
+          "toon_bytes": 558,
+          "text": "{\"you\":\"backend\",\"room\":\"measure\",\"roster\":[{\"name\":\"backend\",\"role\":\"Backend Engineer\",\"expertise\":\"Owns the service APIs and the data layer: endpoint contracts, SQL query design, schema migrations, and data modelling for every service in this repo.\",\"skills\":\"sql api-design performance\",\"status\":\"idle\",\"online\":true}],\"messages\":[],\"hint\":\"You are the first one here, which is normal. Teammates and instructions arrive over morse — park with morse_wait (a long timeout_seconds is fine) and stay parked until someone speaks. Do not set status done before you have been given work.\"}"
+        },
+        {
+          "seq": 2,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 1
+          },
+          "payload_bytes": 0,
+          "result_bytes": 203,
+          "toon_bytes": 198,
+          "text": "{\"messages\":[],\"waited_seconds\":1,\"hint\":\"Nothing yet — you have not been given work, and being early is normal. Park again with morse_wait and a long timeout_seconds. Do not set status done or stop.\"}"
+        },
+        {
+          "seq": 3,
+          "agent": "backend",
+          "tool": "morse_wait",
+          "args": {
+            "timeout_seconds": 1
+          },
+          "payload_bytes": 0,
+          "result_bytes": 34,
+          "toon_bytes": 30,
+          "text": "{\"messages\":[],\"waited_seconds\":1}"
+        }
+      ]
+    }
+  ]
+}

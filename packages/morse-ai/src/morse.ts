@@ -48,7 +48,17 @@ export class Morse {
     this.importLegacy(input.room);
     const name = input.name.trim().toLowerCase();
     const { agent } = this.registry.publish({ ...input, name });
-    this.bus.join(input.room, name);
+    // The announcement is written here rather than left to the bus so it can
+    // carry what the newcomer is for — the human watching `morse log` is the
+    // one reader who gets no roster delta. Delivery is unchanged: room log
+    // only, nobody's inbox, no interrupted asks.
+    const { firstTime } = this.bus.join(input.room, name, { announce: false });
+    if (firstTime) {
+      const what = agent.role
+        ? ` (${agent.role}${agent.skills.length ? `: ${agent.skills.join(", ")}` : ""})`
+        : "";
+      this.bus.systemMessage(input.room, `${name} joined the room${what}.`);
+    }
     return agent;
   }
 

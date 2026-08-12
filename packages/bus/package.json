@@ -1,6 +1,6 @@
 {
   "name": "@morse-ai/bus",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "The morse message bus: rooms, delivery, threads, and blocking waits over one SQLite file.",
   "keywords": [
     "agents",

@@ -34,6 +34,12 @@ export interface ServerOptions {
   onInitialize?: (clientInfo: { name?: string; version?: string }) => void;
   /** Invoked once the transport closes, so the server can mark itself offline. */
   onShutdown?: () => void;
+  /**
+   * Turns a tool's structured result into the text the model reads. Defaults
+   * to compact JSON; the composition layer supplies TOON. String results pass
+   * through untouched either way, so error text is never re-encoded.
+   */
+  serialize?: (result: unknown) => string;
 }
 
 interface RpcMessage {
@@ -46,6 +52,7 @@ interface RpcMessage {
 export function serve(options: ServerOptions): void {
   const inFlight = new Map<string | number, AbortController>();
   const shutdown = new AbortController();
+  const serialize = options.serialize ?? ((value: unknown) => JSON.stringify(value));
   let closed = false;
 
   const write = (payload: unknown): void => {
@@ -137,7 +144,7 @@ export function serve(options: ServerOptions): void {
           inFlight.set(id, controller);
           try {
             const result = await options.call(name, args, { signal: controller.signal });
-            respond(id, toToolResult(result));
+            respond(id, toToolResult(result, serialize));
           } catch (error) {
             // Tool failures are results, not transport errors: the model needs
             // to see what went wrong so it can correct the call.
@@ -170,8 +177,8 @@ export function serve(options: ServerOptions): void {
   }
 }
 
-function toToolResult(result: unknown): Record<string, unknown> {
-  const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+function toToolResult(result: unknown, serialize: (value: unknown) => string): Record<string, unknown> {
+  const text = typeof result === "string" ? result : serialize(result);
   // Text only, deliberately. `structuredContent` is for tools that declare an
   // outputSchema; sending it alongside the text without one just puts every
   // message body into the model's context twice.

@@ -63,6 +63,25 @@ That single decision explains most of the design:
 - **Presence is a side effect of waiting.** Every poll inside `morse_wait` is also a heartbeat, so a parked agent shows up as online without a separate keepalive.
 - **A blocking ask must be interruptible.** If A asks B and B asks A at the same instant, both are parked and neither can answer. `morse_ask` therefore returns early when *unrelated* mail arrives (`outcome: "interrupted"`), handing the agent something it can act on. Deadlock becomes a scheduling hiccup.
 - **Presence noise stays out of inboxes.** "frontend joined" is written to the room log but delivered to nobody, because a join notice that interrupts every blocking ask in the room is worse than useless.
+- **Roster changes ride the next result.** Instead of waking anyone, compact `arrived` / `changed` / `departed` entries piggyback on whatever tool result an agent receives next — a mid-task agent learns a newcomer's skills without spending a turn on the roster, and a parked one is never interrupted for it.
+
+## What being in the room costs
+
+Coordination mechanics are overhead, so morse measures them — scripted sessions
+over the real MCP server, recording the exact bytes a model reads
+(`scripts/measure-protocol.mjs` in the repo reruns them; `docs/plans/0.4.0/`
+holds the raw runs):
+
+| Scenario | 0.3.0 | 0.4.0 |
+| --- | --- | --- |
+| Cold start, launch to first park | 4 calls, 2,023 B | **1 call, 756 B** — register returns roster + waiting mail |
+| Two agents, 5 ask/reply cycles + broadcast (19 results) | 14,918 B, 82% protocol | **6,306 B, 56% protocol** |
+| Idle hour, Claude Code defaults | ~72 turns, ~6,860 tokens | **~13 turns, ~98 tokens** |
+
+Three changes carry most of that: results stopped echoing what the model just
+wrote, coaching hints are said once per session instead of per call, and the
+steady-state empty wait shrank to ~30 bytes because roster and status changes
+arrive as deltas only when something actually changed.
 
 ## Knowing when it is over
 
@@ -98,7 +117,7 @@ Agents see these over MCP:
 
 | Tool | What it is for |
 | --- | --- |
-| `morse_register` | Join and publish what you own. |
+| `morse_register` | Join and publish what you own. Returns the roster and any waiting mail. |
 | `morse_roster` | Who is here, what they know, what they are doing. |
 | `morse_send` | Send without blocking. `to: ["*"]` broadcasts. |
 | `morse_ask` | Ask and block until answered. Returns early on unrelated mail. |
@@ -108,6 +127,11 @@ Agents see these over MCP:
 | `morse_status` | `working` / `blocked` / `done`, so the room can tell it has converged. |
 | `morse_thread` | Re-read one conversation. |
 | `morse_history` | Re-read the room. |
+
+Tool results arrive as [TOON](https://github.com/toon-format/toon) — field
+names declared once, one row per entry — because the only reader on this
+surface is a model, and uniform lists are where TOON saves the most. Set
+`MORSE_FORMAT=json` on the server to switch back.
 
 ## CLI
 
@@ -125,6 +149,24 @@ morse init                              Write .mcp.json for a plain `claude`
 morse reset [--force]                   Clear the room (asks first)
 morse mcp                               Run the MCP server
 ```
+
+Agents get the same ten operations as verbs, so a harness that cannot speak MCP
+can still take part. `--toon` on any read makes the output machine-readable as
+compact TOON tables — the format agents are taught — and `--json` gives the
+same shape as JSON for scripts.
+
+```
+morse register / leave                  Join or depart, as $MORSE_AGENT or --as
+morse inbox                             Unread mail, without blocking
+morse wait [--thread <id>]              Block until mail arrives
+morse reply <thread> <message>          Answer on a thread
+morse thread <id> / morse history       Re-read a conversation, or the room
+morse status set <state> [--note ...]   Publish what you are doing
+```
+
+`morse ask` exits `0` when answered, `2` when other mail arrived first, and `1`
+on a timeout. The `2` is worth handling: your question is still open *and* the
+messages it hands back have already been marked read.
 
 `--room <name>` overrides the room on any command.
 
@@ -245,12 +287,14 @@ frontend     working    Frontend Engineer         claude-code
 | `MORSE_ROOM` | git repo name | Which room to join. |
 | `MORSE_HOME` | `~/.morse` | Where the store lives. |
 | `MORSE_DB` | `$MORSE_HOME/morse.db` | Full path to the store. |
-| `MORSE_WAIT_SECONDS` | `50` | Default park duration for `morse_wait`. |
+| `MORSE_WAIT_SECONDS` | `50` (`morse join` sets `270` for Claude Code) | Default park duration for `morse_wait`. |
+| `MORSE_WAIT_MAX` | `900` | Upper bound on any single park. |
+| `MORSE_FORMAT` | `toon` | MCP tool-result format: `toon` or `json`. |
 | `MORSE_OPERATOR` | `operator` | Your name when you use `morse send` / `morse ask`. |
 | `MORSE_ROLES` | — | Colon-separated directories of role files to search. |
 | `MORSE_PLUGINS` | on | Set `0`/`off` to read only `.morse/roles`, never other tools' agent folders. |
 
-Claude Code's default MCP tool timeout is effectively unbounded, so a longer `MORSE_WAIT_SECONDS` is safe there. The 50-second default is chosen to stay inside stricter harnesses.
+Claude Code's default MCP tool timeout is effectively unbounded, so `morse join` starts Claude Code sessions with a 270-second park — an idle hour costs ~13 turns instead of ~72, and each re-park lands inside the prompt-cache window. The 50-second fallback stays inside stricter harnesses; mail interrupts a park immediately either way, so a long park costs nothing in responsiveness. Raise `MORSE_WAIT_MAX` for parks past 15 minutes.
 
 ## Security and data
 
