@@ -45,8 +45,13 @@ passes. Use that when it is true; do not use it to defer the work.
 ```bash
 npm run docs:dev      # local preview at http://localhost:4321
 npm run docs:build    # production build, and the internal link check
-npm run docs:deploy   # build, then wrangler deploy (maintainer, needs Cloudflare auth)
 ```
+
+Deployment is not yours to run. Cloudflare Workers Builds is connected to this
+repository and deploys on push; `npm run docs:deploy` exists as a maintainer's
+break-glass and needs `wrangler login`. `.github/workflows/docs.yml` therefore
+builds and checks, and never deploys — see
+[CONTRIBUTING.md](CONTRIBUTING.md#deploys) before changing that.
 
 The scripts install `site/`'s dependencies first, so they work from a fresh
 clone. `site/` is a standalone npm project, deliberately outside the workspace

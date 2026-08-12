@@ -1,11 +1,23 @@
 name: Docs
 
-# The documentation site at https://morse-ai.com.
+# Checks for the documentation site at https://morse-ai.com.
 #
-# `site/` is a separate npm project on purpose — it is deliberately outside the
-# workspace `packages/*` glob, so `npm ci` at the root neither installs Astro
-# nor lets a docs dependency reach the published packages. Every step here
-# therefore runs with `working-directory: site`.
+# Deployment is deliberately not here. Cloudflare Workers Builds is connected to
+# this repository and owns it: on a push it clones, runs `npm run docs:build`,
+# then `npx wrangler deploy` (and `wrangler versions upload` for a preview URL on
+# other branches). That is why there is no CLOUDFLARE_API_TOKEN secret and no
+# deploy job — Cloudflare mints its own token for the build. wrangler.jsonc
+# records the dashboard settings. Do not add a deploy step here without turning
+# the git integration off first; two deployers racing over one Worker is worse
+# than either alone.
+#
+# What is left is the part Cloudflare cannot do: fail a pull request. A build
+# that only breaks after merge is a site that is already broken.
+#
+# `site/` is a separate npm project on purpose — deliberately outside the
+# workspace `packages/*` glob, so `npm ci` at the root neither installs Astro nor
+# lets a docs dependency reach the published packages. Hence the
+# `working-directory: site` on every step below.
 on:
   push:
     branches: [main]
@@ -18,12 +30,9 @@ on:
   # touch site/.
   pull_request:
 
-# Two pushes to main in quick succession would otherwise race to upload the
-# same Worker, and the loser is whichever finishes second — not whichever is
-# newer. Queue instead, and never cancel a deploy half-way.
 concurrency:
   group: docs-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -42,22 +51,6 @@ jobs:
       - run: npm run build
         working-directory: site
 
-      # Only from main, and only after the build proved the site compiles.
-      # Deploying the same tree the build job just produced, rather than an
-      # artifact handed between jobs, keeps this a single reviewable path.
-      - name: Deploy to Cloudflare Workers
-        if: github.event_name == 'push'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          # Only needed when the token can see more than one account, in which
-          # case wrangler cannot pick for you. Unset is the common case and an
-          # empty value reads as unset, so this costs nothing when absent.
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        # Assets-only Worker: wrangler.jsonc has no `main`, so this uploads
-        # ./site/dist and nothing else. Run from the repository root, where
-        # wrangler.jsonc lives.
-        run: npx --yes wrangler@4 deploy
-
   # Documentation that lags the code is worse than no documentation, because it
   # is believed. The README used to be the single surface, so drift was visible
   # in review; now the detail lives in site/, and a PR that changes a documented
@@ -69,6 +62,8 @@ jobs:
   sync:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:

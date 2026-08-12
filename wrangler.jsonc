@@ -2,10 +2,24 @@
   // The docs site at https://morse-ai.com: an assets-only Worker, no server
   // code. `npm run docs:build` produces ./site/dist; this deploys it.
   //
-  // The custom domain is attached to this Worker in the Cloudflare dashboard
-  // rather than declared here, so a deploy cannot fail on a zone this config
-  // cannot see.
-  "name": "morse-docs",
+  // Deploys come from Cloudflare Workers Builds — the git integration, not a
+  // GitHub Action — so there is no API token in this repository. Cloudflare
+  // clones the repo on a push, runs the build command, then the deploy command,
+  // both from this directory. The dashboard settings that go with this file
+  // (Workers → morse → Settings → Build):
+  //
+  //   Build command                  npm run docs:build
+  //   Deploy command                 npx wrangler deploy
+  //   Non-production branch deploy   npx wrangler versions upload
+  //   Root directory                 /  (this file's directory)
+  //
+  // The build command is *not* `npm run build`: at the workspace root that
+  // means tsc over the three packages, which produces no site.
+  //
+  // `name` must match the Worker the repository is connected to. They diverge
+  // silently otherwise — wrangler deploys whatever this says and leaves the
+  // connected Worker untouched.
+  "name": "morse",
   "compatibility_date": "2026-08-12",
   "assets": {
     "directory": "./site/dist",

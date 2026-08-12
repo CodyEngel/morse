@@ -84,7 +84,7 @@ the quick start, the security warning, and links; everything else is a page.
 ```bash
 npm run docs:dev      # local preview at http://localhost:4321
 npm run docs:build    # production build, and the internal link check
-npm run docs:deploy   # build, then wrangler deploy (maintainer)
+npm run docs:deploy   # build, then wrangler deploy — break-glass, see below
 ```
 
 Those scripts install `site/`'s dependencies first, so a fresh clone needs no
@@ -105,9 +105,50 @@ the site, put `docs: n/a` in the pull request body.
 [AGENTS.md](AGENTS.md) has the surface-to-page table and the site's conventions,
 and applies to anyone working here, agent or not.
 
-Deploys happen from `main` through `.github/workflows/docs.yml`, which needs a
-`CLOUDFLARE_API_TOKEN` secret with Workers deploy permission. `wrangler.jsonc` at
-the repository root describes the Worker: assets only, no server code.
+### Deploys
+
+Cloudflare [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/)
+is connected to this repository and owns deployment. On a push it clones, runs
+the build command, then the deploy command — so there is no API token in the
+repository and no deploy step in CI. `wrangler.jsonc` at the root describes the
+Worker: assets only, no server code, serving `site/dist`.
+
+The dashboard settings that go with it (Workers → `morse` → Settings → Build):
+
+| Setting | Value |
+| --- | --- |
+| Build command | `npm run docs:build` |
+| Deploy command | `npx wrangler deploy` (the default) |
+| Non-production branch deploy command | `npx wrangler versions upload` (the default) |
+| Root directory | `/` (the default) |
+
+Only the build command differs from what the dashboard proposes, and it is the
+one that matters: it is **not** `npm run build`, which at the workspace root
+means `tsc` over the three packages and produces no site. The Worker name in
+`wrangler.jsonc` must match the Worker the repository is connected to; if they
+diverge, wrangler deploys the name in the file and leaves the connected Worker
+untouched.
+
+Two optional settings under **Build variables** and **Build watch paths** are
+worth having, for the same reason the workflow filters paths: a commit that only
+touches `packages/` cannot change the site.
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Build watch paths — include | `site/*`, `wrangler.jsonc` | Skip a build entirely when nothing the site is made of changed |
+| `SKIP_DEPENDENCY_INSTALL` | `1` | The root install exists to run `prepare`, which builds the packages with `tsc`. A docs deploy does not need them, and `docs:build` installs `site/`'s dependencies itself |
+
+The build image defaults to Node 24, which clears both this repository's 22.13
+floor and Astro's.
+
+`.github/workflows/docs.yml` builds the site and checks its links on every pull
+request. That is the half Cloudflare cannot do — fail a PR before it merges — and
+it is why the workflow deploys nothing. Do not add a deploy step to it without
+disconnecting the git integration first.
+
+`npm run docs:deploy` deploys the working tree from a laptop, which is
+break-glass rather than routine: it needs `wrangler login`, and it ships whatever
+is checked out rather than what is on `main`.
 
 ## Dependencies
 
