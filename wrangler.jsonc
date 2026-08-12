@@ -21,6 +21,23 @@
   // connected Worker untouched.
   "name": "morse",
   "compatibility_date": "2026-08-12",
+
+  // Both hostnames serve the site directly; `custom_domain` means wrangler
+  // creates the DNS record and the certificate on deploy, so where the site
+  // lives is recorded here rather than only in a dashboard someone has to
+  // remember to check. This requires morse-ai.com to be a zone on the same
+  // Cloudflare account — if it ever leaves, every deploy fails here, including
+  // one that was only a typo fix on a page.
+  //
+  // www is a second custom domain rather than a redirect, because a redirect
+  // is a zone-level rule and wrangler has no say in it. Every page declares a
+  // canonical URL on the apex (`site` in site/astro.config.mjs), so the two
+  // hostnames do not compete for the same page in search results.
+  "routes": [
+    { "pattern": "morse-ai.com", "custom_domain": true },
+    { "pattern": "www.morse-ai.com", "custom_domain": true }
+  ],
+
   "assets": {
     "directory": "./site/dist",
     // Astro builds directory-index pages, so an unknown path should get the
