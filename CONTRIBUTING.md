@@ -111,7 +111,12 @@ Cloudflare [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/buil
 is connected to this repository and owns deployment. On a push it clones, runs
 the build command, then the deploy command — so there is no API token in the
 repository and no deploy step in CI. `wrangler.jsonc` at the root describes the
-Worker: assets only, no server code, serving `site/dist`.
+Worker: assets only, no server code, serving `site/dist` at `morse-ai.com` and
+`www.morse-ai.com`. Both are declared as custom domains there rather than
+attached by hand, so wrangler owns the DNS records and certificates and the
+config is the record of where the site lives. That does bind deploys to the
+zone: if `morse-ai.com` ever leaves this Cloudflare account, every deploy fails
+until those routes go with it.
 
 The dashboard settings that go with it (Workers → `morse` → Settings → Build):
 
