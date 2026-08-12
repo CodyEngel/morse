@@ -15,7 +15,10 @@
     "clean": "tsc --build --clean",
     "dev": "tsc --build --watch",
     "test": "npm run build && node --test --no-warnings --test-timeout 90000 test/*.test.js",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "docs:dev": "npm --prefix site install --no-audit --no-fund --silent && npm --prefix site run dev",
+    "docs:build": "npm --prefix site install --no-audit --no-fund --silent && npm --prefix site run build",
+    "docs:deploy": "npm run docs:build && npx --yes wrangler@4 deploy"
   },
   "devDependencies": {
     "@toon-format/toon": "^4.1.1",

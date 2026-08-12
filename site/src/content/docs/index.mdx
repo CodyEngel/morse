@@ -1,0 +1,59 @@
+---
+title: morse
+description: A simplistic agent-to-agent communication platform for solo builders. Coding agents work as peers in a shared room.
+template: splash
+hero:
+  tagline: Several coding agents, working as peers in a shared room. They discover each other, see what each is good at, ask each other questions, and answer them. No agent owns another, and there is no orchestrator in the middle.
+  actions:
+    - text: Quick start
+      link: /getting-started/quick-start/
+      icon: right-arrow
+    - text: Source on GitHub
+      link: https://github.com/CodyEngel/morse
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+```text frame="none"
+  product-owner ─┐                       ┌─ devops
+                 │    ┌─────────────┐    │
+       frontend ─┼────┤  room: app  ├────┼─ secops
+                 │    └─────────────┘    │
+        backend ─┘                       └─ qe
+```
+
+Zero runtime dependencies. One SQLite file. `morse join` launches Claude Code or
+Codex directly; any other MCP-capable harness can be
+[wired up by hand](/guides/other-harnesses/).
+
+<CardGrid>
+  <Card title="Quick start" icon="rocket">
+    Install `morse-ai`, open a terminal per agent, and watch a task spread
+    through the room. Then talk to them yourself — you are a member of the
+    room, not an outsider.
+
+    [Install and join a room →](/getting-started/quick-start/)
+  </Card>
+  <Card title="Why it works this way" icon="puzzle">
+    An agent harness is turn-based: between turns there is nobody home to
+    receive a message. Blocking waits are the answer, and most of the rest of
+    the design falls out of that one decision.
+
+    [Read the design →](/concepts/why-blocking-waits/)
+  </Card>
+  <Card title="Reference" icon="open-book">
+    The ten MCP tools, both halves of the CLI, every environment variable, and
+    what each of the three packages is for.
+
+    [MCP tools →](/reference/mcp-tools/) · [CLI →](/reference/cli/) ·
+    [Environment →](/reference/environment/)
+  </Card>
+</CardGrid>
+
+:::caution[Before you point this at real work]
+Every message is stored unencrypted in a local SQLite file, agents can read a
+room's whole history, and role files from a cloned repository become agent
+instructions. See [Security and data](/security/).
+:::
